@@ -863,6 +863,11 @@ def create_non_user_relative():
         [],
     )
 
+    child_ids_raw = data.get(
+        "child_ids",
+        [],
+    )
+
     gender = (
         str(gender_raw)
         .strip()
@@ -998,6 +1003,63 @@ def create_non_user_relative():
                 "at most two known parents"
             )
         }), 400
+
+    if child_ids_raw is None:
+        child_ids_raw = []
+
+    if not isinstance(
+        child_ids_raw,
+        list,
+    ):
+        return jsonify({
+            "message": (
+                "child_ids must be a list"
+            )
+        }), 400
+
+    if (
+        child_ids_raw
+        and relationship_type != "parent"
+    ):
+        return jsonify({
+            "message": (
+                "child_ids can only be supplied "
+                "when adding a parent"
+            )
+        }), 400
+
+    child_ids = []
+    seen_child_ids = set()
+
+    for raw_child_id in child_ids_raw:
+        try:
+            child_id = UUID(
+                str(
+                    raw_child_id
+                )
+            )
+
+        except (
+            ValueError,
+            TypeError,
+        ):
+            return jsonify({
+                "message": (
+                    "child_ids contains an "
+                    "invalid person ID"
+                )
+            }), 400
+
+        if child_id in seen_child_ids:
+            continue
+
+        seen_child_ids.add(
+            child_id
+        )
+
+        child_ids.append(
+            child_id
+        )
 
     # -----------------------------------------
     # Target person
@@ -1174,6 +1236,77 @@ def create_non_user_relative():
         )
 
     # -----------------------------------------
+    # Determine supplemental children
+    # when adding a parent
+    # -----------------------------------------
+
+    selected_children = []
+
+    for child_id in child_ids:
+        if child_id == target_person.id:
+            continue
+
+        child_person = db.session.get(
+            Person,
+            child_id,
+        )
+
+        if not child_person:
+            return jsonify({
+                "message": (
+                    "One of the selected children "
+                    "was not found"
+                )
+            }), 404
+
+        if not is_person_in_family_network(
+            user.person.id,
+            child_person.id,
+        ):
+            return jsonify({
+                "message": (
+                    "Selected children must "
+                    "already exist in your "
+                    "family network"
+                )
+            }), 403
+
+        is_self = (
+            child_person.id
+            == user.person.id
+        )
+
+        if not is_self:
+            if (
+                child_person.user_id
+                is not None
+            ):
+                return jsonify({
+                    "message": (
+                        "A registered user's "
+                        "genealogy cannot be "
+                        "modified directly"
+                    )
+                }), 403
+
+            if (
+                child_person
+                .created_by_user_id
+                != user.id
+            ):
+                return jsonify({
+                    "message": (
+                        "You can only select "
+                        "yourself or a non-user "
+                        "profile you created"
+                    )
+                }), 403
+
+        selected_children.append(
+            child_person
+        )
+
+    # -----------------------------------------
     # Duplicate detection
     # -----------------------------------------
 
@@ -1303,6 +1436,45 @@ def create_non_user_relative():
         db.session.add(
             relationship
         )
+
+        # -------------------------------------
+        # Supplemental explicit child evidence
+        # when creating a parent
+        # -------------------------------------
+
+        child_relationships = []
+
+        if relationship_type == "parent":
+            for child_person in selected_children:
+                child_relationship = Relationship(
+                    person_a_id=(
+                        new_person.id
+                    ),
+
+                    person_b_id=(
+                        child_person.id
+                    ),
+
+                    relation_a_to_b=(
+                        "child"
+                    ),
+
+                    relation_b_to_a=(
+                        "parent"
+                    ),
+
+                    verification_status=(
+                        "claimed"
+                    ),
+                )
+
+                db.session.add(
+                    child_relationship
+                )
+
+                child_relationships.append(
+                    child_relationship
+                )
 
         # -------------------------------------
         # Supplemental explicit parent evidence

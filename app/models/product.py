@@ -1,7 +1,10 @@
 import uuid
 
 from sqlalchemy import func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import (
+    JSONB,
+    UUID,
+)
 
 from app.extensions import db
 
@@ -57,6 +60,13 @@ class Product(db.Model):
         nullable=True,
     )
 
+    image_urls = db.Column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+
     is_active = db.Column(
         db.Boolean,
         nullable=False,
@@ -80,6 +90,8 @@ class Product(db.Model):
 
     seller = db.relationship(
         "User",
-        foreign_keys=[seller_user_id],
+        foreign_keys=[
+            seller_user_id
+        ],
         back_populates="products",
     )

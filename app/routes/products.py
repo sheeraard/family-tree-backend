@@ -206,6 +206,18 @@ def serialize_product(
             product.image_url
         ),
 
+        "image_urls": (
+            list(
+                product.image_urls
+                or []
+            )
+            or (
+                [product.image_url]
+                if product.image_url
+                else []
+            )
+        ),
+
         "is_active": (
             product.is_active
         ),
@@ -475,14 +487,6 @@ def list_products():
 )
 @jwt_required()
 def list_my_products():
-    """
-    Return all products belonging to the
-    authenticated seller.
-
-    This includes hidden/inactive products
-    so the owner can manage and restore them.
-    """
-
     user = get_current_user()
 
     if not user:
@@ -771,44 +775,22 @@ def update_product(
         if price is None:
             return jsonify({
                 "message": (
-                    "price must be "
-                    "a non-negative "
+                    "price must be a "
+                    "non-negative "
                     "whole number"
                 )
             }), 400
 
         product.price = price
 
-    for (
-        field_name,
-        max_length,
-    ) in (
-        (
-            "description",
-            3000,
-        ),
-        (
-            "category",
-            80,
-        ),
-        (
-            "contact",
-            255,
-        ),
-    ):
-        if (
-            field_name
-            not in data
-        ):
-            continue
-
-        value, error = (
+    if "description" in data:
+        description, error = (
             validate_text(
                 data.get(
-                    field_name
+                    "description"
                 ),
-                max_length,
-                field_name,
+                3000,
+                "description",
             )
         )
 
@@ -817,10 +799,48 @@ def update_product(
                 "message": error
             }), 400
 
-        setattr(
-            product,
-            field_name,
-            value,
+        product.description = (
+            description
+        )
+
+    if "category" in data:
+        category, error = (
+            validate_text(
+                data.get(
+                    "category"
+                ),
+                80,
+                "category",
+            )
+        )
+
+        if error:
+            return jsonify({
+                "message": error
+            }), 400
+
+        product.category = (
+            category
+        )
+
+    if "contact" in data:
+        contact, error = (
+            validate_text(
+                data.get(
+                    "contact"
+                ),
+                255,
+                "contact",
+            )
+        )
+
+        if error:
+            return jsonify({
+                "message": error
+            }), 400
+
+        product.contact = (
+            contact
         )
 
     if "is_active" in data:
@@ -901,9 +921,18 @@ def delete_product(
     if error_response:
         return error_response
 
-    old_image_url = (
-        product.image_url
+    old_image_urls = list(
+        product.image_urls
+        or []
     )
+
+    if (
+        not old_image_urls
+        and product.image_url
+    ):
+        old_image_urls = [
+            product.image_url
+        ]
 
     try:
         db.session.delete(
@@ -912,9 +941,10 @@ def delete_product(
 
         db.session.commit()
 
-        delete_local_product_image(
-            old_image_url
-        )
+        for image_url in old_image_urls:
+            delete_local_product_image(
+                image_url
+            )
 
         return jsonify({
             "message": (
@@ -1079,6 +1109,27 @@ def upload_product_image(
             )
         }), 400
 
+    current_images = list(
+        product.image_urls
+        or []
+    )
+
+    if (
+        not current_images
+        and product.image_url
+    ):
+        current_images.append(
+            product.image_url
+        )
+
+    if len(current_images) >= 5:
+        return jsonify({
+            "message": (
+                "A product can have "
+                "at most 5 images"
+            )
+        }), 400
+
     filename = (
         f"{uuid4().hex}.jpg"
     )
@@ -1086,10 +1137,6 @@ def upload_product_image(
     output_path = (
         get_product_image_directory()
         / filename
-    )
-
-    old_image_url = (
-        product.image_url
     )
 
     try:
@@ -1100,16 +1147,26 @@ def upload_product_image(
             optimize=True,
         )
 
-        product.image_url = (
+        new_image_url = (
             PRODUCT_IMAGE_URL_PREFIX
             + filename
         )
 
-        db.session.commit()
-
-        delete_local_product_image(
-            old_image_url
+        current_images.append(
+            new_image_url
         )
+
+        product.image_urls = (
+            current_images
+        )
+
+        # Keep the first image as the
+        # product cover for old clients.
+        product.image_url = (
+            current_images[0]
+        )
+
+        db.session.commit()
 
         return jsonify({
             "message": (
@@ -1174,11 +1231,20 @@ def delete_product_image(
     if error_response:
         return error_response
 
-    old_image_url = (
-        product.image_url
+    current_images = list(
+        product.image_urls
+        or []
     )
 
-    if not old_image_url:
+    if (
+        not current_images
+        and product.image_url
+    ):
+        current_images.append(
+            product.image_url
+        )
+
+    if not current_images:
         return jsonify({
             "message": (
                 "Product has no image"
@@ -1194,13 +1260,53 @@ def delete_product_image(
             ),
         }), 200
 
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    image_url = str(
+        data.get(
+            "image_url",
+            "",
+        )
+    ).strip()
+
+    # Backward compatibility:
+    # old clients that don't send an
+    # image URL delete the first image.
+    if not image_url:
+        image_url = (
+            current_images[0]
+        )
+
+    if image_url not in current_images:
+        return jsonify({
+            "message": (
+                "Product image not found"
+            )
+        }), 404
+
+    updated_images = [
+        url
+        for url in current_images
+        if url != image_url
+    ]
+
     try:
-        product.image_url = None
+        product.image_urls = (
+            updated_images
+        )
+
+        product.image_url = (
+            updated_images[0]
+            if updated_images
+            else None
+        )
 
         db.session.commit()
 
         delete_local_product_image(
-            old_image_url
+            image_url
         )
 
         return jsonify({

@@ -26,6 +26,7 @@ from app.extensions import db
 from app.models import (
     Person,
     Relationship,
+    RelationshipRequest,
     User,
 )
 
@@ -626,7 +627,176 @@ def get_explicit_parent_people(
         .all()
     )
 
+@people_bp.route(
+    "/<person_id>",
+    methods=["DELETE"],
+)
+@jwt_required()
+def delete_non_user_person(person_id):
+    user = get_current_user()
 
+    if not user:
+        return jsonify({
+            "message": "Invalid user"
+        }), 401
+
+    if not user.person:
+        return jsonify({
+            "message": (
+                "User profile not found"
+            )
+        }), 404
+
+    try:
+        person_uuid = UUID(
+            str(person_id)
+        )
+    except (
+        ValueError,
+        TypeError,
+    ):
+        return jsonify({
+            "message": (
+                "Invalid person ID"
+            )
+        }), 400
+
+    person = db.session.get(
+        Person,
+        person_uuid,
+    )
+
+    if not person:
+        return jsonify({
+            "message": (
+                "Person not found"
+            )
+        }), 404
+
+    # -----------------------------------------
+    # Never delete your own Person profile
+    # -----------------------------------------
+
+    if (
+        person.id
+        == user.person.id
+    ):
+        return jsonify({
+            "message": (
+                "You cannot delete "
+                "your own profile"
+            )
+        }), 403
+
+    # -----------------------------------------
+    # Registered users cannot be deleted
+    # through the relative-management feature
+    # -----------------------------------------
+
+    if person.user_id is not None:
+        return jsonify({
+            "message": (
+                "Registered users "
+                "cannot be deleted"
+            )
+        }), 403
+
+    # -----------------------------------------
+    # Only creator can delete a generated
+    # non-user Person profile
+    # -----------------------------------------
+
+    if (
+        person.created_by_user_id
+        != user.id
+    ):
+        return jsonify({
+            "message": (
+                "You can only delete "
+                "a relative profile "
+                "that you created"
+            )
+        }), 403
+
+    # -----------------------------------------
+    # Must still belong to user's network
+    # -----------------------------------------
+
+    if not is_person_in_family_network(
+        user.person.id,
+        person.id,
+    ):
+        return jsonify({
+            "message": (
+                "This person is not in "
+                "your family network"
+            )
+        }), 403
+
+    try:
+        # -------------------------------------
+        # Relationship requests
+        # -------------------------------------
+
+        db.session.execute(
+            db.delete(
+                RelationshipRequest
+            ).where(
+                db.or_(
+                    RelationshipRequest
+                    .sender_person_id
+                    == person.id,
+
+                    RelationshipRequest
+                    .receiver_person_id
+                    == person.id,
+                )
+            )
+        )
+
+        # -------------------------------------
+        # Family relationships
+        # -------------------------------------
+
+        db.session.execute(
+            db.delete(
+                Relationship
+            ).where(
+                db.or_(
+                    Relationship.person_a_id
+                    == person.id,
+
+                    Relationship.person_b_id
+                    == person.id,
+                )
+            )
+        )
+
+        # -------------------------------------
+        # Person itself
+        # -------------------------------------
+
+        db.session.delete(
+            person
+        )
+
+        db.session.commit()
+
+        return jsonify({
+            "message": (
+                "Relative deleted "
+                "successfully"
+            )
+        }), 200
+
+    except Exception as error:
+        db.session.rollback()
+
+        return server_error_response(
+            "Failed to delete relative",
+            error,
+        )
+    
 @people_bp.route(
     "/non-user-relative",
     methods=["POST"],

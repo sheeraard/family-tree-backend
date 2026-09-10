@@ -18,6 +18,10 @@ from app.routes.family import (
     family_bp,
 )
 
+from app.utils.product_guard import (
+    register_product_guard,
+)
+
 
 def apply_rate_limits(
     app,
@@ -165,6 +169,10 @@ def create_app():
         products_bp,
     )
 
+    from app.routes.product_access import (
+        product_access_bp,
+    )
+
     from app.routes.community import (
         community_bp,
     )
@@ -213,6 +221,11 @@ def create_app():
     )
 
     app.register_blueprint(
+        product_access_bp,
+        url_prefix="/api/products",
+    )
+
+    app.register_blueprint(
         community_bp,
         url_prefix="/api/community",
     )
@@ -227,6 +240,10 @@ def create_app():
         url_prefix=(
             "/api/historical-tree"
         ),
+    )
+
+    register_product_guard(
+        app
     )
 
     apply_rate_limits(

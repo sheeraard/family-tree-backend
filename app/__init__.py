@@ -58,6 +58,15 @@ def apply_rate_limits(
 
         "community.delete_post":
             "30 per hour",
+
+        "culture.create_culture_content":
+            "20 per hour",
+
+        "culture.update_culture_content":
+            "60 per hour",
+
+        "culture.delete_culture_content":
+            "30 per hour",
     }
 
     for (
@@ -145,6 +154,10 @@ def create_app():
         community_bp,
     )
 
+    from app.routes.culture import (
+        culture_bp,
+    )
+
     app.register_blueprint(
         health_bp,
         url_prefix="/api",
@@ -183,6 +196,11 @@ def create_app():
     app.register_blueprint(
         community_bp,
         url_prefix="/api/community",
+    )
+
+    app.register_blueprint(
+        culture_bp,
+        url_prefix="/api/culture",
     )
 
     apply_rate_limits(

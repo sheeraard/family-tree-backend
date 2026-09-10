@@ -9,6 +9,18 @@ from app.extensions import db
 class User(db.Model):
     __tablename__ = "users"
 
+    ROLE_MEMBER = "member"
+    ROLE_UMKM = "umkm"
+    ROLE_ADMIN = "admin"
+    ROLE_SUPER_ADMIN = "super_admin"
+
+    VALID_ROLES = {
+        ROLE_MEMBER,
+        ROLE_UMKM,
+        ROLE_ADMIN,
+        ROLE_SUPER_ADMIN,
+    }
+
     id = db.Column(
         UUID(as_uuid=True),
         primary_key=True,
@@ -32,6 +44,14 @@ class User(db.Model):
     password_hash = db.Column(
         db.String(255),
         nullable=False,
+    )
+
+    role = db.Column(
+        db.String(30),
+        nullable=False,
+        default=ROLE_MEMBER,
+        server_default=ROLE_MEMBER,
+        index=True,
     )
 
     is_active = db.Column(
@@ -67,3 +87,42 @@ class User(db.Model):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    @property
+    def is_member(self):
+        return self.role == self.ROLE_MEMBER
+
+    @property
+    def is_umkm(self):
+        return self.role == self.ROLE_UMKM
+
+    @property
+    def is_admin(self):
+        return self.role in {
+            self.ROLE_ADMIN,
+            self.ROLE_SUPER_ADMIN,
+        }
+
+    @property
+    def is_super_admin(self):
+        return (
+            self.role
+            == self.ROLE_SUPER_ADMIN
+        )
+
+    @property
+    def can_sell_products(self):
+        return self.role in {
+            self.ROLE_UMKM,
+            self.ROLE_ADMIN,
+            self.ROLE_SUPER_ADMIN,
+        }
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "email": self.email,
+            "phone": self.phone,
+            "role": self.role,
+            "is_active": self.is_active,
+        }

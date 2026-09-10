@@ -86,12 +86,19 @@ def apply_rate_limits(
 
         "historical_tree.delete_historical_relationship":
             "60 per hour",
+
+        "umkm.create_application":
+            "5 per hour",
+
+        "umkm.review_application":
+            "30 per hour",
     }
 
     for (
         endpoint,
         limit_value,
     ) in limits.items():
+
         view_function = (
             app.view_functions.get(
                 endpoint
@@ -100,9 +107,8 @@ def apply_rate_limits(
 
         if view_function is None:
             raise RuntimeError(
-                "Rate-limit "
-                "configuration references "
-                "missing endpoint: "
+                "Rate-limit configuration "
+                "references missing endpoint: "
                 f"{endpoint}"
             )
 
@@ -185,6 +191,10 @@ def create_app():
         historical_tree_bp,
     )
 
+    from app.routes.umkm import (
+        umkm_bp,
+    )
+
     app.register_blueprint(
         health_bp,
         url_prefix="/api",
@@ -240,6 +250,11 @@ def create_app():
         url_prefix=(
             "/api/historical-tree"
         ),
+    )
+
+    app.register_blueprint(
+        umkm_bp,
+        url_prefix="/api/umkm",
     )
 
     register_product_guard(

@@ -26,3 +26,7 @@ from app.models.historical_person import (
 from app.models.historical_relationship import (
     HistoricalRelationship,
 )
+
+from app.models.umkm_application import (
+    UmkmApplication,
+)

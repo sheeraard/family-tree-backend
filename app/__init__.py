@@ -67,6 +67,21 @@ def apply_rate_limits(
 
         "culture.delete_culture_content":
             "30 per hour",
+
+        "historical_tree.create_historical_person":
+            "30 per hour",
+
+        "historical_tree.update_historical_person":
+            "60 per hour",
+
+        "historical_tree.delete_historical_person":
+            "30 per hour",
+
+        "historical_tree.create_historical_relationship":
+            "60 per hour",
+
+        "historical_tree.delete_historical_relationship":
+            "60 per hour",
     }
 
     for (
@@ -158,6 +173,10 @@ def create_app():
         culture_bp,
     )
 
+    from app.routes.historical_tree import (
+        historical_tree_bp,
+    )
+
     app.register_blueprint(
         health_bp,
         url_prefix="/api",
@@ -201,6 +220,13 @@ def create_app():
     app.register_blueprint(
         culture_bp,
         url_prefix="/api/culture",
+    )
+
+    app.register_blueprint(
+        historical_tree_bp,
+        url_prefix=(
+            "/api/historical-tree"
+        ),
     )
 
     apply_rate_limits(

@@ -98,6 +98,12 @@ def apply_rate_limits(
 
         "password_reset.confirm_password_reset":
             "10 per 15 minutes",
+
+        "email_verification.request_email_verification":
+            "3 per 15 minutes",
+
+        "email_verification.confirm_email_verification":
+            "10 per 15 minutes",
     }
 
     for (
@@ -182,6 +188,10 @@ def create_app():
         password_reset_bp,
     )
 
+    from app.routes.email_verification import (
+        email_verification_bp,
+    )
+
     from app.routes.profile import (
         profile_bp,
     )
@@ -240,6 +250,14 @@ def create_app():
     )
 
     app.register_blueprint(
+        email_verification_bp,
+        url_prefix=(
+            "/api/auth/"
+            "email-verification"
+        ),
+    )
+
+    app.register_blueprint(
         profile_bp,
         url_prefix="/api/profile",
     )
@@ -291,14 +309,6 @@ def create_app():
         url_prefix="/api/umkm",
     )
 
-    app.register_blueprint(
-        email_verification_bp,
-        url_prefix=(
-            "/api/auth/"
-            "email-verification"
-        ),
-    )
-
     #
     # Global guards
     #
@@ -321,10 +331,6 @@ def create_app():
 
     register_error_handlers(
         app
-    )
-
-    from app.routes.email_verification import (
-        email_verification_bp,
     )
 
     return app

@@ -1,8 +1,4 @@
-from flask import (
-    Flask,
-    jsonify,
-)
-
+from flask import Flask
 from dotenv import load_dotenv
 
 from app.config import Config
@@ -16,6 +12,10 @@ from app.extensions import (
 
 from app.routes.family import (
     family_bp,
+)
+
+from app.utils.error_handlers import (
+    register_error_handlers,
 )
 
 from app.utils.product_guard import (
@@ -265,30 +265,8 @@ def create_app():
         app
     )
 
-    @app.errorhandler(429)
-    def rate_limit_exceeded(
-        error,
-    ):
-        retry_after = getattr(
-            error,
-            "retry_after",
-            None,
-        )
-
-        response = {
-            "message": (
-                "Too many requests. "
-                "Please try again later."
-            )
-        }
-
-        if retry_after is not None:
-            response[
-                "retry_after"
-            ] = retry_after
-
-        return jsonify(
-            response
-        ), 429
+    register_error_handlers(
+        app
+    )
 
     return app

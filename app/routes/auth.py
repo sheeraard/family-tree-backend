@@ -31,6 +31,10 @@ from app.models import (
     User,
 )
 
+from app.routes.email_verification import (
+    issue_email_verification_code,
+)
+
 
 auth_bp = Blueprint(
     "auth",
@@ -370,6 +374,8 @@ def register():
                     ),
                 )
             ),
+
+            is_email_verified=False,
         )
 
         db.session.add(
@@ -485,16 +491,30 @@ def register():
 
         db.session.commit()
 
+        try:
+            issue_email_verification_code(
+                new_user
+            )
+
+        except Exception:
+            current_app.logger.exception(
+                "Registration succeeded, "
+                "but verification email "
+                "could not be sent"
+            )
+
         return jsonify({
             "message": (
-                "Account registered "
-                "successfully"
+                "Account registered successfully. "
+                "Please verify your email."
             ),
 
             "claimed_existing_profile": (
                 claimed_person
                 is not None
             ),
+
+            "verification_required": True,
 
             "user": {
                 "id": str(
@@ -507,6 +527,10 @@ def register():
 
                 "phone": (
                     new_user.phone
+                ),
+
+                "is_email_verified": (
+                    new_user.is_email_verified
                 ),
             },
 
@@ -599,6 +623,19 @@ def login():
             )
         }), 403
 
+    if not user.is_email_verified:
+        return jsonify({
+            "message": (
+                "Email belum diverifikasi"
+            ),
+
+            "verification_required": True,
+
+            "email": (
+                user.email
+            ),
+        }), 403
+
     access_token = (
         create_access_token(
             identity=str(
@@ -623,6 +660,10 @@ def login():
 
             "email": (
                 user.email
+            ),
+
+            "is_email_verified": (
+                user.is_email_verified
             ),
         },
     }), 200
@@ -685,6 +726,17 @@ def me():
 
             "is_active": (
                 user.is_active
+            ),
+
+            "is_email_verified": (
+                user.is_email_verified
+            ),
+
+            "email_verified_at": (
+                user.email_verified_at
+                .isoformat()
+                if user.email_verified_at
+                else None
             ),
         },
 

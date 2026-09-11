@@ -291,6 +291,14 @@ def create_app():
         url_prefix="/api/umkm",
     )
 
+    app.register_blueprint(
+        email_verification_bp,
+        url_prefix=(
+            "/api/auth/"
+            "email-verification"
+        ),
+    )
+
     #
     # Global guards
     #
@@ -313,6 +321,10 @@ def create_app():
 
     register_error_handlers(
         app
+    )
+
+    from app.routes.email_verification import (
+        email_verification_bp,
     )
 
     return app

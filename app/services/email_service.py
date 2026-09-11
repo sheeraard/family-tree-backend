@@ -1,16 +1,81 @@
-import requests
+import smtplib
+import ssl
+
+from email.message import EmailMessage
 
 from flask import current_app
 
 
-RESEND_API_URL = "https://api.resend.com/emails"
-
-
 def _email_is_configured() -> bool:
     return bool(
-        current_app.config.get("RESEND_API_KEY")
+        current_app.config.get("MAIL_SMTP_HOST")
+        and current_app.config.get("MAIL_SMTP_PORT")
+        and current_app.config.get("MAIL_SMTP_USERNAME")
+        and current_app.config.get("MAIL_SMTP_PASSWORD")
         and current_app.config.get("MAIL_FROM")
     )
+
+
+def _open_smtp_connection():
+    host = current_app.config["MAIL_SMTP_HOST"]
+    port = int(current_app.config["MAIL_SMTP_PORT"])
+
+    use_tls = bool(
+        current_app.config.get("MAIL_SMTP_USE_TLS")
+    )
+
+    use_ssl = bool(
+        current_app.config.get("MAIL_SMTP_USE_SSL")
+    )
+
+    username = current_app.config[
+        "MAIL_SMTP_USERNAME"
+    ]
+
+    password = current_app.config[
+        "MAIL_SMTP_PASSWORD"
+    ]
+
+    if use_ssl:
+        context = ssl.create_default_context()
+
+        smtp = smtplib.SMTP_SSL(
+            host,
+            port,
+            timeout=15,
+            context=context,
+        )
+
+        smtp.login(
+            username,
+            password,
+        )
+
+        return smtp
+
+    smtp = smtplib.SMTP(
+        host,
+        port,
+        timeout=15,
+    )
+
+    smtp.ehlo()
+
+    if use_tls:
+        context = ssl.create_default_context()
+
+        smtp.starttls(
+            context=context,
+        )
+
+        smtp.ehlo()
+
+    smtp.login(
+        username,
+        password,
+    )
+
+    return smtp
 
 
 def send_email(
@@ -23,12 +88,12 @@ def send_email(
     if not _email_is_configured():
         if current_app.config.get("IS_PRODUCTION"):
             raise RuntimeError(
-                "Email service is not configured."
+                "SMTP email delivery is not configured"
             )
 
         current_app.logger.warning(
             (
-                "Email service is not configured.\n"
+                "SMTP email delivery is not configured.\n"
                 "Development email:\n"
                 "To: %s\n"
                 "Subject: %s\n\n"
@@ -41,63 +106,39 @@ def send_email(
 
         return None
 
-    api_key = current_app.config["RESEND_API_KEY"]
     sender_email = current_app.config["MAIL_FROM"]
+
     sender_name = current_app.config.get(
         "MAIL_FROM_NAME",
         "GEKRAFS",
     )
 
-    payload = {
-        "from": f"{sender_name} <{sender_email}>",
-        "to": [recipient],
-        "subject": subject,
-        "text": text_body,
-    }
+    message = EmailMessage()
+
+    message["From"] = (
+        f"{sender_name} <{sender_email}>"
+    )
+
+    message["To"] = recipient
+
+    message["Subject"] = subject
+
+    message.set_content(
+        text_body
+    )
 
     if html_body:
-        payload["html"] = html_body
-
-    try:
-        response = requests.post(
-            RESEND_API_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "GEKRAFS-Backend/1.0",
-            },
-            json=payload,
-            timeout=15,
+        message.add_alternative(
+            html_body,
+            subtype="html",
         )
 
-        if not response.ok:
-            current_app.logger.error(
-                "Resend API error. HTTP %s: %s",
-                response.status_code,
-                response.text,
-            )
-
-            raise RuntimeError(
-                (
-                    "Email provider returned "
-                    f"HTTP {response.status_code}."
-                )
-            )
-
-        if not response.content:
-            return None
-
-        return response.json()
-
-    except requests.RequestException as error:
-        current_app.logger.error(
-            "Unable to connect to Resend: %s",
-            error,
+    with _open_smtp_connection() as smtp:
+        smtp.send_message(
+            message
         )
 
-        raise RuntimeError(
-            "Unable to connect to email provider."
-        ) from error
+    return True
 
 
 def send_password_reset_code(

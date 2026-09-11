@@ -19,14 +19,20 @@ def _email_is_configured() -> bool:
 
 def _open_smtp_connection():
     host = current_app.config["MAIL_SMTP_HOST"]
-    port = int(current_app.config["MAIL_SMTP_PORT"])
+    port = int(
+        current_app.config["MAIL_SMTP_PORT"]
+    )
 
     use_tls = bool(
-        current_app.config.get("MAIL_SMTP_USE_TLS")
+        current_app.config.get(
+            "MAIL_SMTP_USE_TLS"
+        )
     )
 
     use_ssl = bool(
-        current_app.config.get("MAIL_SMTP_USE_SSL")
+        current_app.config.get(
+            "MAIL_SMTP_USE_SSL"
+        )
     )
 
     username = current_app.config[
@@ -87,7 +93,9 @@ def send_email(
     html_body: Optional[str] = None,
 ):
     if not _email_is_configured():
-        if current_app.config.get("IS_PRODUCTION"):
+        if current_app.config.get(
+            "IS_PRODUCTION"
+        ):
             raise RuntimeError(
                 "SMTP email delivery is not configured"
             )
@@ -175,8 +183,8 @@ GEKRAFS
     <p>Halo,</p>
 
     <p>
-        Kami menerima permintaan untuk mereset
-        password akun GEKRAFS Anda.
+        Kami menerima permintaan untuk
+        mereset password akun GEKRAFS Anda.
     </p>
 
     <p>Kode reset password Anda:</p>
@@ -200,6 +208,88 @@ GEKRAFS
     <p>
         Jika Anda tidak meminta reset password,
         abaikan email ini.
+    </p>
+
+    <p>GEKRAFS</p>
+</body>
+</html>
+"""
+
+    return send_email(
+        recipient=recipient,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+    )
+
+
+def send_email_verification_code(
+    *,
+    recipient: str,
+    code: str,
+):
+    subject = "Verifikasi Email GEKRAFS"
+
+    text_body = f"""Halo,
+
+Terima kasih telah mendaftar di GEKRAFS.
+
+Gunakan kode berikut untuk memverifikasi alamat email Anda:
+
+{code}
+
+Kode ini berlaku selama 15 menit.
+
+Jangan berikan kode ini kepada siapa pun.
+
+Jika Anda tidak membuat akun GEKRAFS, abaikan email ini.
+
+GEKRAFS
+"""
+
+    html_body = f"""
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <p>Halo,</p>
+
+    <p>
+        Terima kasih telah mendaftar
+        di GEKRAFS.
+    </p>
+
+    <p>
+        Gunakan kode berikut untuk
+        memverifikasi alamat email Anda:
+    </p>
+
+    <div
+        style="
+            font-size: 28px;
+            font-weight: bold;
+            letter-spacing: 6px;
+            margin: 24px 0;
+        "
+    >
+        {code}
+    </div>
+
+    <p>
+        Kode ini berlaku selama
+        <strong>15 menit</strong>.
+    </p>
+
+    <p>
+        Jangan berikan kode ini
+        kepada siapa pun.
+    </p>
+
+    <p>
+        Jika Anda tidak membuat akun
+        GEKRAFS, abaikan email ini.
     </p>
 
     <p>GEKRAFS</p>

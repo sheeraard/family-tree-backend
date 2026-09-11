@@ -92,6 +92,12 @@ def apply_rate_limits(
 
         "umkm.review_application":
             "30 per hour",
+
+        "password_reset.request_password_reset":
+            "3 per 15 minutes",
+
+        "password_reset.confirm_password_reset":
+            "10 per 15 minutes",
     }
 
     for (
@@ -132,6 +138,10 @@ def create_app():
         Config
     )
 
+    #
+    # Extensions
+    #
+
     db.init_app(
         app
     )
@@ -149,7 +159,16 @@ def create_app():
         app
     )
 
+    #
+    # Import models so Flask-Migrate
+    # can discover all tables.
+    #
+
     from app import models
+
+    #
+    # Blueprints
+    #
 
     from app.routes.health import (
         health_bp,
@@ -157,6 +176,10 @@ def create_app():
 
     from app.routes.auth import (
         auth_bp,
+    )
+
+    from app.routes.password_reset import (
+        password_reset_bp,
     )
 
     from app.routes.profile import (
@@ -195,6 +218,10 @@ def create_app():
         umkm_bp,
     )
 
+    #
+    # Register blueprints
+    #
+
     app.register_blueprint(
         health_bp,
         url_prefix="/api",
@@ -203,6 +230,13 @@ def create_app():
     app.register_blueprint(
         auth_bp,
         url_prefix="/api/auth",
+    )
+
+    app.register_blueprint(
+        password_reset_bp,
+        url_prefix=(
+            "/api/auth/password-reset"
+        ),
     )
 
     app.register_blueprint(
@@ -257,13 +291,25 @@ def create_app():
         url_prefix="/api/umkm",
     )
 
+    #
+    # Global guards
+    #
+
     register_product_guard(
         app
     )
 
+    #
+    # Rate limits
+    #
+
     apply_rate_limits(
         app
     )
+
+    #
+    # JSON error responses
+    #
 
     register_error_handlers(
         app

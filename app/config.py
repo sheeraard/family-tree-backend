@@ -58,16 +58,6 @@ def get_database_url():
             "localhost/family_tree"
         )
 
-    #
-    # Railway / Render / other hosts
-    # may provide:
-    #
-    # postgres://...
-    # postgresql://...
-    #
-    # This project uses Psycopg 3.
-    #
-
     if database_url.startswith(
         "postgres://"
     ):
@@ -122,18 +112,6 @@ def get_access_token_minutes():
 
 
 def get_rate_limit_storage_uri():
-    """
-    Development default:
-        memory://
-
-    Production can later use Redis:
-        redis://...
-
-    If multiple Gunicorn instances /
-    containers are used, Redis is preferred
-    so all workers share the same counters.
-    """
-
     return os.getenv(
         "RATELIMIT_STORAGE_URI",
         "memory://",
@@ -160,6 +138,60 @@ def get_debug_enabled():
             "on",
         }
     )
+
+
+def get_boolean_env(
+    name,
+    default=False,
+):
+    raw_value = os.getenv(
+        name
+    )
+
+    if raw_value is None:
+        return default
+
+    return (
+        raw_value
+        .strip()
+        .lower()
+        in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    )
+
+
+def get_mail_port():
+    raw_value = os.getenv(
+        "MAIL_SMTP_PORT",
+        "587",
+    )
+
+    try:
+        port = int(
+            raw_value
+        )
+    except ValueError:
+        raise RuntimeError(
+            "MAIL_SMTP_PORT "
+            "must be an integer"
+        )
+
+    if (
+        port < 1
+        or
+        port > 65535
+    ):
+        raise RuntimeError(
+            "MAIL_SMTP_PORT "
+            "must be between "
+            "1 and 65535"
+        )
+
+    return port
 
 
 class Config:
@@ -257,3 +289,61 @@ class Config:
     )
 
     RATELIMIT_HEADERS_ENABLED = True
+
+    #
+    # Email / SMTP
+    #
+
+    MAIL_SMTP_HOST = os.getenv(
+        "MAIL_SMTP_HOST",
+        "",
+    ).strip()
+
+    MAIL_SMTP_PORT = (
+        get_mail_port()
+    )
+
+    MAIL_SMTP_USERNAME = (
+        os.getenv(
+            "MAIL_SMTP_USERNAME",
+            "",
+        )
+        .strip()
+    )
+
+    MAIL_SMTP_PASSWORD = (
+        os.getenv(
+            "MAIL_SMTP_PASSWORD",
+            "",
+        )
+    )
+
+    MAIL_FROM = (
+        os.getenv(
+            "MAIL_FROM",
+            "",
+        )
+        .strip()
+    )
+
+    MAIL_FROM_NAME = (
+        os.getenv(
+            "MAIL_FROM_NAME",
+            "GEKRAFS",
+        )
+        .strip()
+    )
+
+    MAIL_SMTP_USE_TLS = (
+        get_boolean_env(
+            "MAIL_SMTP_USE_TLS",
+            True,
+        )
+    )
+
+    MAIL_SMTP_USE_SSL = (
+        get_boolean_env(
+            "MAIL_SMTP_USE_SSL",
+            False,
+        )
+    )

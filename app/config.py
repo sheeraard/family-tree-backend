@@ -140,6 +140,28 @@ def get_rate_limit_storage_uri():
     )
 
 
+def get_debug_enabled():
+    if IS_PRODUCTION:
+        return False
+
+    raw_value = os.getenv(
+        "FLASK_DEBUG",
+        "false",
+    )
+
+    return (
+        raw_value
+        .strip()
+        .lower()
+        in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    )
+
+
 class Config:
     #
     # Environment
@@ -154,7 +176,7 @@ class Config:
     )
 
     DEBUG = (
-        not IS_PRODUCTION
+        get_debug_enabled()
     )
 
     TESTING = False
@@ -171,6 +193,10 @@ class Config:
     PROPAGATE_EXCEPTIONS = False
 
     JSON_SORT_KEYS = False
+
+    MAX_CONTENT_LENGTH = (
+        10 * 1024 * 1024
+    )
 
     #
     # Database

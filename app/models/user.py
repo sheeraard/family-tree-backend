@@ -60,6 +60,19 @@ class User(db.Model):
         default=True,
     )
 
+    is_email_verified = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=db.false(),
+        index=True,
+    )
+
+    email_verified_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True,
+    )
+
     created_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,
@@ -84,6 +97,13 @@ class User(db.Model):
         "Product",
         foreign_keys="Product.seller_user_id",
         back_populates="seller",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    email_verification_codes = db.relationship(
+        "EmailVerificationCode",
+        back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
@@ -125,4 +145,12 @@ class User(db.Model):
             "phone": self.phone,
             "role": self.role,
             "is_active": self.is_active,
+            "is_email_verified": (
+                self.is_email_verified
+            ),
+            "email_verified_at": (
+                self.email_verified_at.isoformat()
+                if self.email_verified_at
+                else None
+            ),
         }

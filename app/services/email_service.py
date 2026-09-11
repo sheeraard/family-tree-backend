@@ -2,6 +2,7 @@ import smtplib
 import ssl
 
 from email.message import EmailMessage
+from typing import Optional
 
 from flask import current_app
 
@@ -83,7 +84,7 @@ def send_email(
     recipient: str,
     subject: str,
     text_body: str,
-    html_body: str | None = None,
+    html_body: Optional[str] = None,
 ):
     if not _email_is_configured():
         if current_app.config.get("IS_PRODUCTION"):
@@ -106,7 +107,9 @@ def send_email(
 
         return None
 
-    sender_email = current_app.config["MAIL_FROM"]
+    sender_email = current_app.config[
+        "MAIL_FROM"
+    ]
 
     sender_name = current_app.config.get(
         "MAIL_FROM_NAME",
@@ -120,7 +123,6 @@ def send_email(
     )
 
     message["To"] = recipient
-
     message["Subject"] = subject
 
     message.set_content(
@@ -166,6 +168,9 @@ GEKRAFS
     html_body = f"""
 <!DOCTYPE html>
 <html lang="id">
+<head>
+    <meta charset="UTF-8">
+</head>
 <body>
     <p>Halo,</p>
 

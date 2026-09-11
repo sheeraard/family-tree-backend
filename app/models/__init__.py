@@ -30,3 +30,7 @@ from app.models.historical_relationship import (
 from app.models.umkm_application import (
     UmkmApplication,
 )
+
+from app.models.email_verification_code import (
+    EmailVerificationCode,
+)

@@ -149,6 +149,34 @@ def main():
         )
     )
 
+    environment[
+        "MEDIA_STORAGE_BACKEND"
+    ] = "s3"
+
+    environment[
+        "AWS_ENDPOINT_URL"
+    ] = "https://storage.example.invalid"
+
+    environment[
+        "AWS_ACCESS_KEY_ID"
+    ] = "test-access-key"
+
+    environment[
+        "AWS_SECRET_ACCESS_KEY"
+    ] = "test-secret-key"
+
+    environment[
+        "AWS_S3_BUCKET_NAME"
+    ] = "test-bucket"
+
+    environment[
+        "AWS_DEFAULT_REGION"
+    ] = "auto"
+
+    environment[
+        "AWS_S3_URL_STYLE"
+    ] = "virtual"
+
     #
     # If DATABASE_URL is somehow blank in
     # the current shell, use the local

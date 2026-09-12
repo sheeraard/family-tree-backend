@@ -7,6 +7,7 @@ from flask import (
     Blueprint,
     current_app,
     jsonify,
+    redirect,
     request,
     send_from_directory,
 )
@@ -27,6 +28,13 @@ from app.extensions import (
 from app.models import (
     Person,
     User,
+)
+
+from app.services.media_storage import (
+    create_media_download_url,
+    delete_media,
+    save_media_bytes,
+    uses_object_storage,
 )
 
 
@@ -183,23 +191,23 @@ def delete_local_profile_photo(
     ):
         return
 
-    path = (
-        get_profile_photo_directory()
-        / filename
+    media_key = (
+        "profile_photos/"
+        + filename
     )
 
     try:
-        path.unlink(
-            missing_ok=True
+        delete_media(
+            media_key
         )
 
-    except OSError:
-        current_app.logger.warning(
+    except Exception:
+        current_app.logger.exception(
             (
                 "Could not delete old "
                 "profile photo: %s"
             ),
-            path,
+            media_key,
         )
 
 
@@ -617,21 +625,25 @@ def upload_profile_photo():
         f"{uuid4().hex}.jpg"
     )
 
-    photo_directory = (
-        get_profile_photo_directory()
+    output_buffer = BytesIO()
+
+    image.save(
+        output_buffer,
+        format="JPEG",
+        quality=88,
+        optimize=True,
     )
 
-    output_path = (
-        photo_directory
-        / filename
+    media_key = (
+        "profile_photos/"
+        + filename
     )
 
     try:
-        image.save(
-            output_path,
-            format="JPEG",
-            quality=88,
-            optimize=True,
+        save_media_bytes(
+            media_key,
+            output_buffer.getvalue(),
+            content_type="image/jpeg",
         )
 
         old_photo_url = (
@@ -671,12 +683,15 @@ def upload_profile_photo():
         db.session.rollback()
 
         try:
-            output_path.unlink(
-                missing_ok=True
+            delete_media(
+                media_key
             )
 
-        except OSError:
-            pass
+        except Exception:
+            current_app.logger.exception(
+                "Failed to clean up "
+                "profile photo after error"
+            )
 
         return server_error_response(
             (
@@ -791,6 +806,27 @@ def serve_profile_photo(
                 "Invalid photo path"
             )
         }), 404
+
+    media_key = (
+        "profile_photos/"
+        + filename
+    )
+
+    if uses_object_storage():
+        try:
+            return redirect(
+                create_media_download_url(
+                    media_key
+                ),
+                code=302,
+            )
+
+        except Exception as error:
+            return server_error_response(
+                "Failed to load "
+                "profile photo",
+                error,
+            )
 
     return send_from_directory(
         get_profile_photo_directory(),

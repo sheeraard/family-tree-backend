@@ -6,6 +6,7 @@ from flask import (
     Blueprint,
     current_app,
     jsonify,
+    redirect,
     request,
     send_from_directory,
 )
@@ -23,6 +24,13 @@ from PIL import (
 
 from app.extensions import db
 from app.models import Product, User
+
+from app.services.media_storage import (
+    create_media_download_url,
+    delete_media,
+    save_media_bytes,
+    uses_object_storage,
+)
 
 
 products_bp = Blueprint(
@@ -125,21 +133,21 @@ def delete_local_product_image(
     ):
         return
 
-    path = (
-        get_product_image_directory()
-        / filename
+    media_key = (
+        "product_images/"
+        + filename
     )
 
     try:
-        path.unlink(
-            missing_ok=True
+        delete_media(
+            media_key
         )
 
-    except OSError:
-        current_app.logger.warning(
+    except Exception:
+        current_app.logger.exception(
             "Could not delete "
             "product image: %s",
-            path,
+            media_key,
         )
 
 
@@ -1134,17 +1142,25 @@ def upload_product_image(
         f"{uuid4().hex}.jpg"
     )
 
-    output_path = (
-        get_product_image_directory()
-        / filename
+    output_buffer = BytesIO()
+
+    image.save(
+        output_buffer,
+        format="JPEG",
+        quality=88,
+        optimize=True,
+    )
+
+    media_key = (
+        "product_images/"
+        + filename
     )
 
     try:
-        image.save(
-            output_path,
-            format="JPEG",
-            quality=88,
-            optimize=True,
+        save_media_bytes(
+            media_key,
+            output_buffer.getvalue(),
+            content_type="image/jpeg",
         )
 
         new_image_url = (
@@ -1187,12 +1203,15 @@ def upload_product_image(
         db.session.rollback()
 
         try:
-            output_path.unlink(
-                missing_ok=True
+            delete_media(
+                media_key
             )
 
-        except OSError:
-            pass
+        except Exception:
+            current_app.logger.exception(
+                "Failed to clean up "
+                "product image after error"
+            )
 
         return (
             server_error_response(
@@ -1352,6 +1371,27 @@ def serve_product_image(
                 "Invalid filename"
             )
         }), 400
+
+    media_key = (
+        "product_images/"
+        + filename
+    )
+
+    if uses_object_storage():
+        try:
+            return redirect(
+                create_media_download_url(
+                    media_key
+                ),
+                code=302,
+            )
+
+        except Exception as error:
+            return server_error_response(
+                "Failed to load "
+                "product image",
+                error,
+            )
 
     return send_from_directory(
         get_product_image_directory(),

@@ -1,5 +1,6 @@
 alembic==1.16.5
 blinker==1.9.0
+boto3==1.42.78
 certifi==2026.7.22
 charset-normalizer==3.5.1
 click==8.1.8
@@ -27,12 +28,10 @@ psycopg-binary==3.2.13
 Pygments==2.21.0
 PyJWT==2.13.0
 python-dotenv==1.2.1
-requests==2.32.5
 rich==13.9.4
 SQLAlchemy==2.0.52
 tomli==2.4.1
 typing_extensions==4.16.0
-urllib3==2.6.3
 Werkzeug==3.1.8
 wrapt==2.4.0
 zipp==3.23.1

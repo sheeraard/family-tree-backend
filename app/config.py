@@ -194,6 +194,99 @@ def get_mail_port():
     return port
 
 
+def get_media_storage_backend():
+    default_backend = (
+        "s3"
+        if IS_PRODUCTION
+        else "local"
+    )
+
+    backend = (
+        os.getenv(
+            "MEDIA_STORAGE_BACKEND",
+            default_backend,
+        )
+        .strip()
+        .lower()
+    )
+
+    if backend not in {
+        "local",
+        "s3",
+    }:
+        raise RuntimeError(
+            "MEDIA_STORAGE_BACKEND must be "
+            "either local or s3"
+        )
+
+    if (
+        IS_PRODUCTION
+        and backend != "s3"
+    ):
+        raise RuntimeError(
+            "MEDIA_STORAGE_BACKEND must be "
+            "s3 in production"
+        )
+
+    return backend
+
+
+MEDIA_STORAGE_BACKEND = (
+    get_media_storage_backend()
+)
+
+
+def get_object_storage_value(
+    variable_name,
+    default="",
+):
+    value = os.getenv(
+        variable_name,
+        default,
+    )
+
+    if isinstance(
+        value,
+        str,
+    ):
+        value = value.strip()
+
+    if (
+        MEDIA_STORAGE_BACKEND
+        == "s3"
+        and not value
+    ):
+        raise RuntimeError(
+            f"{variable_name} must be set "
+            "when MEDIA_STORAGE_BACKEND=s3"
+        )
+
+    return value
+
+
+def get_s3_url_style():
+    style = (
+        os.getenv(
+            "AWS_S3_URL_STYLE",
+            "virtual",
+        )
+        .strip()
+        .lower()
+    )
+
+    if style not in {
+        "auto",
+        "path",
+        "virtual",
+    }:
+        raise RuntimeError(
+            "AWS_S3_URL_STYLE must be "
+            "auto, path, or virtual"
+        )
+
+    return style
+
+
 class Config:
     #
     # Environment
@@ -289,6 +382,51 @@ class Config:
     )
 
     RATELIMIT_HEADERS_ENABLED = True
+
+    #
+    # Media storage
+    #
+
+    MEDIA_STORAGE_BACKEND = (
+        MEDIA_STORAGE_BACKEND
+    )
+
+    AWS_ENDPOINT_URL = (
+        get_object_storage_value(
+            "AWS_ENDPOINT_URL"
+        )
+    )
+
+    AWS_ACCESS_KEY_ID = (
+        get_object_storage_value(
+            "AWS_ACCESS_KEY_ID"
+        )
+    )
+
+    AWS_SECRET_ACCESS_KEY = (
+        get_object_storage_value(
+            "AWS_SECRET_ACCESS_KEY"
+        )
+    )
+
+    AWS_S3_BUCKET_NAME = (
+        get_object_storage_value(
+            "AWS_S3_BUCKET_NAME"
+        )
+    )
+
+    AWS_DEFAULT_REGION = (
+        os.getenv(
+            "AWS_DEFAULT_REGION",
+            "auto",
+        )
+        .strip()
+        or "auto"
+    )
+
+    AWS_S3_URL_STYLE = (
+        get_s3_url_style()
+    )
 
     #
     # Email / SMTP

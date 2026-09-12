@@ -347,6 +347,11 @@ def confirm_password_reset():
         )
     )
 
+    user.session_version = (
+        user.session_version
+        + 1
+    )
+
     reset_code.used_at = (
         datetime.now(
             timezone.utc

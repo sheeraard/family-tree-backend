@@ -68,6 +68,13 @@ class User(db.Model):
         index=True,
     )
 
+    session_version = db.Column(
+        db.Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
     email_verified_at = db.Column(
         db.DateTime(timezone=True),
         nullable=True,

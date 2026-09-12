@@ -104,6 +104,9 @@ def apply_rate_limits(
 
         "email_verification.confirm_email_verification":
             "10 per 15 minutes",
+
+        "account.delete_account":
+            "3 per hour",
     }
 
     for (
@@ -192,6 +195,10 @@ def create_app():
         email_verification_bp,
     )
 
+    from app.routes.account import (
+        account_bp,
+    )
+
     from app.routes.profile import (
         profile_bp,
     )
@@ -255,6 +262,11 @@ def create_app():
             "/api/auth/"
             "email-verification"
         ),
+    )
+
+    app.register_blueprint(
+        account_bp,
+        url_prefix="/api/account",
     )
 
     app.register_blueprint(

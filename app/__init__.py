@@ -235,6 +235,10 @@ def create_app():
         umkm_bp,
     )
 
+    from app.routes.legal import (
+        legal_bp,
+    )
+
     #
     # Register blueprints
     #
@@ -319,6 +323,11 @@ def create_app():
     app.register_blueprint(
         umkm_bp,
         url_prefix="/api/umkm",
+    )
+
+    app.register_blueprint(
+        legal_bp,
+        url_prefix="/legal",
     )
 
     #

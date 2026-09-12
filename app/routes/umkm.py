@@ -438,6 +438,40 @@ def review_application(
                 )
             }), 404
 
+        if not applicant.is_active:
+            return jsonify({
+                "message": (
+                    "Inactive accounts "
+                    "cannot be approved "
+                    "as UMKM."
+                )
+            }), 409
+
+        if applicant.id == admin.id:
+            return jsonify({
+                "message": (
+                    "Administrators cannot "
+                    "approve their own "
+                    "UMKM application."
+                )
+            }), 403
+
+        if (
+            applicant.role
+            != User.ROLE_MEMBER
+        ):
+            return jsonify({
+                "message": (
+                    "Applicant is no longer "
+                    "eligible for UMKM "
+                    "approval."
+                ),
+
+                "current_role": (
+                    applicant.role
+                ),
+            }), 409
+
         applicant.role = (
             User.ROLE_UMKM
         )

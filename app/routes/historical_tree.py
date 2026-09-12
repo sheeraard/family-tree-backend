@@ -89,6 +89,54 @@ def _clean_optional_string(
     return value
 
 
+def _would_create_cycle(
+    parent_id,
+    child_id,
+):
+    relationships = (
+        HistoricalRelationship.query
+        .all()
+    )
+
+    children_by_parent = {}
+
+    for relationship in relationships:
+        children_by_parent.setdefault(
+            relationship.parent_id,
+            set(),
+        ).add(
+            relationship.child_id
+        )
+
+    pending = [
+        child_id
+    ]
+
+    visited = set()
+
+    while pending:
+        current_id = pending.pop()
+
+        if current_id == parent_id:
+            return True
+
+        if current_id in visited:
+            continue
+
+        visited.add(
+            current_id
+        )
+
+        pending.extend(
+            children_by_parent.get(
+                current_id,
+                set(),
+            )
+        )
+
+    return False
+
+
 def _serialize_tree(
     include_unpublished=False,
 ):
@@ -473,6 +521,17 @@ def create_historical_relationship():
                 "not found"
             )
         }), 404
+
+    if _would_create_cycle(
+        parent_id,
+        child_id,
+    ):
+        return jsonify({
+            "message": (
+                "Historical relationship "
+                "would create a cycle"
+            )
+        }), 409
 
     relationship_type = str(
         data.get(

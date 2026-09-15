@@ -1,7 +1,10 @@
 import uuid
 
 from sqlalchemy import func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import (
+    JSONB,
+    UUID,
+)
 
 from app.extensions import db
 
@@ -37,9 +40,19 @@ class CultureContent(db.Model):
         nullable=True,
     )
 
+    # Backward-compatible cover image field.
+    # The first entry in image_urls is always
+    # mirrored here for older clients.
     image_url = db.Column(
         db.Text,
         nullable=True,
+    )
+
+    image_urls = db.Column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default="[]",
     )
 
     is_published = db.Column(
@@ -64,13 +77,31 @@ class CultureContent(db.Model):
     )
 
     def to_dict(self):
+        images = list(
+            self.image_urls
+            or []
+        )
+
+        if (
+            not images
+            and self.image_url
+        ):
+            images = [
+                self.image_url
+            ]
+
         return {
             "id": str(self.id),
             "title": self.title,
             "description": self.description,
             "category": self.category,
             "location": self.location,
-            "image_url": self.image_url,
+            "image_url": (
+                images[0]
+                if images
+                else None
+            ),
+            "image_urls": images,
             "is_published": self.is_published,
             "created_at": (
                 self.created_at.isoformat()

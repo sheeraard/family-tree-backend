@@ -22,9 +22,28 @@ class HistoricalTreeGroup(db.Model):
         index=True,
     )
 
+    head_person_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey(
+            "historical_people.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
     description = db.Column(
         db.Text,
         nullable=True,
+    )
+
+    sort_order = db.Column(
+        db.Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        index=True,
     )
 
     is_published = db.Column(
@@ -48,17 +67,24 @@ class HistoricalTreeGroup(db.Model):
         onupdate=func.now(),
     )
 
-    people = db.relationship(
+    head_person = db.relationship(
         "HistoricalPerson",
-        back_populates="group",
-        lazy="selectin",
+        foreign_keys=[head_person_id],
+        lazy="joined",
+        passive_deletes=True,
     )
 
     def to_dict(self):
         return {
             "id": str(self.id),
             "name": self.name,
+            "head_person_id": (
+                str(self.head_person_id)
+                if self.head_person_id
+                else None
+            ),
             "description": self.description,
+            "sort_order": self.sort_order,
             "is_published": self.is_published,
             "created_at": (
                 self.created_at.isoformat()

@@ -1,28 +1,12 @@
 from uuid import UUID
 
-from flask import (
-    Blueprint,
-    jsonify,
-    request,
-)
+from flask import Blueprint, jsonify, request
 
 from app.extensions import db
-
-from app.models.historical_tree_group import (
-    HistoricalTreeGroup,
-)
-
-from app.models.historical_person import (
-    HistoricalPerson,
-)
-
-from app.models.historical_relationship import (
-    HistoricalRelationship,
-)
-
-from app.utils.permissions import (
-    admin_required,
-)
+from app.models.historical_person import HistoricalPerson
+from app.models.historical_relationship import HistoricalRelationship
+from app.models.historical_tree_group import HistoricalTreeGroup
+from app.utils.permissions import admin_required
 
 
 historical_tree_bp = Blueprint(
@@ -43,91 +27,78 @@ def _clean_optional_string(value):
         return None
 
     value = str(value).strip()
+    return value or None
 
-    if not value:
+
+def _parse_int(value, default=0):
+    if value in (None, ""):
+        return default
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
         return None
-
-    return value
 
 
 def _get_group(group_id):
     group_uuid = _parse_uuid(group_id)
-
     if group_uuid is None:
         return None
-
-    return db.session.get(
-        HistoricalTreeGroup,
-        group_uuid,
-    )
+    return db.session.get(HistoricalTreeGroup, group_uuid)
 
 
 def _get_person(person_id):
     person_uuid = _parse_uuid(person_id)
-
     if person_uuid is None:
         return None
-
-    return db.session.get(
-        HistoricalPerson,
-        person_uuid,
-    )
+    return db.session.get(HistoricalPerson, person_uuid)
 
 
 def _get_relationship(relationship_id):
-    relationship_uuid = _parse_uuid(
-        relationship_id
-    )
-
+    relationship_uuid = _parse_uuid(relationship_id)
     if relationship_uuid is None:
         return None
-
     return db.session.get(
         HistoricalRelationship,
         relationship_uuid,
     )
 
 
-def _parse_group_from_payload(data):
-    if "group_id" not in data:
-        return None, False, None
+def _parse_head_person(data, required=False):
+    if "head_person_id" not in data:
+        if required:
+            return None, "head_person_id is required"
+        return None, None
 
-    raw_group_id = data.get("group_id")
+    raw_id = data.get("head_person_id")
+    if raw_id in (None, ""):
+        if required:
+            return None, "head_person_id is required"
+        return None, None
 
-    if raw_group_id in (None, ""):
-        return None, True, None
+    person_id = _parse_uuid(raw_id)
+    if person_id is None:
+        return None, "Invalid head_person_id"
 
-    group_uuid = _parse_uuid(raw_group_id)
-
-    if group_uuid is None:
-        return None, True, "Invalid group_id"
-
-    group = db.session.get(
-        HistoricalTreeGroup,
-        group_uuid,
+    person = db.session.get(
+        HistoricalPerson,
+        person_id,
     )
+    if person is None:
+        return None, "Historical person not found"
 
-    if group is None:
-        return None, True, "Historical tree group not found"
-
-    return group, True, None
+    return person, None
 
 
 def _would_create_cycle(parent_id, child_id):
-    relationships = (
-        HistoricalRelationship.query
-        .all()
-    )
-
+    relationships = HistoricalRelationship.query.all()
     children_by_parent = {}
 
     for relationship in relationships:
         children_by_parent.setdefault(
             relationship.parent_id,
             set(),
-        ).add(
-            relationship.child_id
-        )
+        ).add(relationship.child_id)
 
     pending = [child_id]
     visited = set()
@@ -142,7 +113,6 @@ def _would_create_cycle(parent_id, child_id):
             continue
 
         visited.add(current_id)
-
         pending.extend(
             children_by_parent.get(
                 current_id,
@@ -155,31 +125,24 @@ def _would_create_cycle(parent_id, child_id):
 
 def _serialize_tree(include_unpublished=False):
     groups_query = HistoricalTreeGroup.query
+    people_query = HistoricalPerson.query
 
     if not include_unpublished:
         groups_query = groups_query.filter_by(
+            is_published=True
+        )
+        people_query = people_query.filter_by(
             is_published=True
         )
 
     groups = (
         groups_query
         .order_by(
-            HistoricalTreeGroup.created_at.asc()
+            HistoricalTreeGroup.sort_order.asc(),
+            HistoricalTreeGroup.created_at.asc(),
         )
         .all()
     )
-
-    visible_group_ids = {
-        group.id
-        for group in groups
-    }
-
-    people_query = HistoricalPerson.query
-
-    if not include_unpublished:
-        people_query = people_query.filter_by(
-            is_published=True
-        )
 
     people = (
         people_query
@@ -189,18 +152,7 @@ def _serialize_tree(include_unpublished=False):
         .all()
     )
 
-    if not include_unpublished:
-        people = [
-            person
-            for person in people
-            if (
-                person.group_id is None
-                or person.group_id
-                in visible_group_ids
-            )
-        ]
-
-    allowed_ids = {
+    allowed_person_ids = {
         person.id
         for person in people
     }
@@ -208,9 +160,7 @@ def _serialize_tree(include_unpublished=False):
     relationships = (
         HistoricalRelationship.query
         .order_by(
-            HistoricalRelationship
-            .created_at
-            .asc()
+            HistoricalRelationship.created_at.asc()
         )
         .all()
     )
@@ -219,18 +169,86 @@ def _serialize_tree(include_unpublished=False):
         relationship
         for relationship in relationships
         if (
-            relationship.parent_id
-            in allowed_ids
-            and relationship.child_id
-            in allowed_ids
+            relationship.parent_id in allowed_person_ids
+            and relationship.child_id in allowed_person_ids
         )
     ]
 
+    children_by_parent = {}
+    parents_by_child = {}
+
+    for relationship in relationships:
+        children_by_parent.setdefault(
+            relationship.parent_id,
+            [],
+        ).append(relationship.child_id)
+        parents_by_child.setdefault(
+            relationship.child_id,
+            [],
+        ).append(relationship.parent_id)
+
+    visible_groups = [
+        group
+        for group in groups
+        if (
+            group.head_person_id is None
+            or group.head_person_id in allowed_person_ids
+        )
+    ]
+
+    group_by_head = {
+        group.head_person_id: group
+        for group in visible_groups
+        if group.head_person_id is not None
+    }
+
+    serialized_groups = []
+
+    for group in visible_groups:
+        item = group.to_dict()
+        head_id = group.head_person_id
+
+        child_ids = (
+            children_by_parent.get(
+                head_id,
+                [],
+            )
+            if head_id is not None
+            else []
+        )
+
+        family_ids = []
+        if head_id is not None:
+            family_ids.append(str(head_id))
+        family_ids.extend(str(child_id) for child_id in child_ids)
+
+        previous_group_ids = []
+        if head_id is not None:
+            for parent_id in parents_by_child.get(head_id, []):
+                previous_group = group_by_head.get(parent_id)
+                if previous_group is not None:
+                    previous_group_ids.append(
+                        str(previous_group.id)
+                    )
+
+        continuation_group_ids = []
+        for child_id in child_ids:
+            continuation_group = group_by_head.get(child_id)
+            if continuation_group is not None:
+                continuation_group_ids.append(
+                    str(continuation_group.id)
+                )
+
+        item.update({
+            "child_count": len(child_ids),
+            "family_person_ids": family_ids,
+            "previous_group_ids": previous_group_ids,
+            "continuation_group_ids": continuation_group_ids,
+        })
+        serialized_groups.append(item)
+
     return {
-        "groups": [
-            group.to_dict()
-            for group in groups
-        ],
+        "groups": serialized_groups,
         "nodes": [
             person.to_dict()
             for person in people
@@ -264,14 +282,9 @@ def get_admin_historical_tree():
 @historical_tree_bp.post("/groups")
 @admin_required
 def create_historical_group():
-    data = request.get_json(
-        silent=True
-    ) or {}
+    data = request.get_json(silent=True) or {}
 
-    name = str(
-        data.get("name", "")
-    ).strip()
-
+    name = str(data.get("name", "")).strip()
     if not name:
         return jsonify({
             "message": "Group name is required"
@@ -282,29 +295,53 @@ def create_historical_group():
         .filter_by(name=name)
         .first()
     )
-
     if existing is not None:
         return jsonify({
             "message": "Historical tree group already exists"
         }), 409
 
+    head_person, head_error = _parse_head_person(
+        data,
+        required=True,
+    )
+    if head_error is not None:
+        return jsonify({"message": head_error}), 400
+
+    existing_head = (
+        HistoricalTreeGroup.query
+        .filter_by(head_person_id=head_person.id)
+        .first()
+    )
+    if existing_head is not None:
+        return jsonify({
+            "message": "This person already heads another historical family group"
+        }), 409
+
+    sort_order = _parse_int(
+        data.get("sort_order"),
+        default=0,
+    )
+    if sort_order is None:
+        return jsonify({
+            "message": "sort_order must be an integer"
+        }), 400
+
     is_published = data.get(
         "is_published",
         True,
     )
-
     if not isinstance(is_published, bool):
         return jsonify({
-            "message": (
-                "is_published must be true or false"
-            )
+            "message": "is_published must be true or false"
         }), 400
 
     group = HistoricalTreeGroup(
         name=name,
+        head_person_id=head_person.id,
         description=_clean_optional_string(
             data.get("description")
         ),
+        sort_order=sort_order,
         is_published=is_published,
     )
 
@@ -312,32 +349,24 @@ def create_historical_group():
     db.session.commit()
 
     return jsonify({
-        "message": "Historical tree group created",
+        "message": "Historical family group created",
         "item": group.to_dict(),
     }), 201
 
 
-@historical_tree_bp.put(
-    "/groups/<group_id>"
-)
+@historical_tree_bp.put("/groups/<group_id>")
 @admin_required
 def update_historical_group(group_id):
     group = _get_group(group_id)
-
     if group is None:
         return jsonify({
             "message": "Historical tree group not found"
         }), 404
 
-    data = request.get_json(
-        silent=True
-    ) or {}
+    data = request.get_json(silent=True) or {}
 
     if "name" in data:
-        name = str(
-            data.get("name", "")
-        ).strip()
-
+        name = str(data.get("name", "")).strip()
         if not name:
             return jsonify({
                 "message": "Group name cannot be empty"
@@ -351,118 +380,104 @@ def update_historical_group(group_id):
             )
             .first()
         )
-
         if existing is not None:
             return jsonify({
                 "message": "Historical tree group already exists"
             }), 409
-
         group.name = name
+
+    if "head_person_id" in data:
+        head_person, head_error = _parse_head_person(
+            data,
+            required=True,
+        )
+        if head_error is not None:
+            return jsonify({"message": head_error}), 400
+
+        existing_head = (
+            HistoricalTreeGroup.query
+            .filter(
+                HistoricalTreeGroup.head_person_id == head_person.id,
+                HistoricalTreeGroup.id != group.id,
+            )
+            .first()
+        )
+        if existing_head is not None:
+            return jsonify({
+                "message": "This person already heads another historical family group"
+            }), 409
+        group.head_person_id = head_person.id
 
     if "description" in data:
         group.description = _clean_optional_string(
             data.get("description")
         )
 
-    if "is_published" in data:
-        is_published = data.get(
-            "is_published"
+    if "sort_order" in data:
+        sort_order = _parse_int(
+            data.get("sort_order"),
+            default=0,
         )
+        if sort_order is None:
+            return jsonify({
+                "message": "sort_order must be an integer"
+            }), 400
+        group.sort_order = sort_order
 
+    if "is_published" in data:
+        is_published = data.get("is_published")
         if not isinstance(is_published, bool):
             return jsonify({
-                "message": (
-                    "is_published must be true or false"
-                )
+                "message": "is_published must be true or false"
             }), 400
-
         group.is_published = is_published
 
     db.session.commit()
 
     return jsonify({
-        "message": "Historical tree group updated",
+        "message": "Historical family group updated",
         "item": group.to_dict(),
     }), 200
 
 
-@historical_tree_bp.delete(
-    "/groups/<group_id>"
-)
+@historical_tree_bp.delete("/groups/<group_id>")
 @admin_required
 def delete_historical_group(group_id):
     group = _get_group(group_id)
-
     if group is None:
         return jsonify({
             "message": "Historical tree group not found"
         }), 404
 
-    has_people = (
-        HistoricalPerson.query
-        .filter_by(group_id=group.id)
-        .first()
-        is not None
-    )
-
-    if has_people:
-        return jsonify({
-            "message": (
-                "Move or delete the people in this group before deleting it"
-            )
-        }), 409
-
     db.session.delete(group)
     db.session.commit()
 
     return jsonify({
-        "message": "Historical tree group deleted"
+        "message": "Historical family group deleted"
     }), 200
 
 
 @historical_tree_bp.post("/people")
 @admin_required
 def create_historical_person():
-    data = request.get_json(
-        silent=True
-    ) or {}
+    data = request.get_json(silent=True) or {}
 
-    name = str(
-        data.get("name", "")
-    ).strip()
-
+    name = str(data.get("name", "")).strip()
     if not name:
         return jsonify({
             "message": "Name is required"
-        }), 400
-
-    group, group_was_set, group_error = (
-        _parse_group_from_payload(data)
-    )
-
-    if group_error is not None:
-        return jsonify({
-            "message": group_error
         }), 400
 
     is_published = data.get(
         "is_published",
         True,
     )
-
     if not isinstance(is_published, bool):
         return jsonify({
-            "message": (
-                "is_published must be true or false"
-            )
+            "message": "is_published must be true or false"
         }), 400
 
     person = HistoricalPerson(
-        group_id=(
-            group.id
-            if group_was_set and group is not None
-            else None
-        ),
         name=name,
         title=_clean_optional_string(
             data.get("title")
@@ -497,88 +512,24 @@ def create_historical_person():
     }), 201
 
 
-@historical_tree_bp.put(
-    "/people/<person_id>"
-)
+@historical_tree_bp.put("/people/<person_id>")
 @admin_required
 def update_historical_person(person_id):
     person = _get_person(person_id)
-
     if person is None:
         return jsonify({
             "message": "Historical person not found"
         }), 404
 
-    data = request.get_json(
-        silent=True
-    ) or {}
+    data = request.get_json(silent=True) or {}
 
     if "name" in data:
-        name = str(
-            data.get("name", "")
-        ).strip()
-
+        name = str(data.get("name", "")).strip()
         if not name:
             return jsonify({
                 "message": "Name cannot be empty"
             }), 400
-
         person.name = name
-
-    group, group_was_set, group_error = (
-        _parse_group_from_payload(data)
-    )
-
-    if group_error is not None:
-        return jsonify({
-            "message": group_error
-        }), 400
-
-    if group_was_set:
-        new_group_id = (
-            group.id
-            if group is not None
-            else None
-        )
-
-        linked_relationships = (
-            HistoricalRelationship.query
-            .filter(
-                db.or_(
-                    HistoricalRelationship.parent_id
-                    == person.id,
-                    HistoricalRelationship.child_id
-                    == person.id,
-                )
-            )
-            .all()
-        )
-
-        for relationship in linked_relationships:
-            other_id = (
-                relationship.child_id
-                if relationship.parent_id
-                == person.id
-                else relationship.parent_id
-            )
-
-            other = db.session.get(
-                HistoricalPerson,
-                other_id,
-            )
-
-            if (
-                other is not None
-                and other.group_id
-                != new_group_id
-            ):
-                return jsonify({
-                    "message": (
-                        "Move connected relatives to the same group first"
-                    )
-                }), 409
-
-        person.group_id = new_group_id
 
     optional_fields = [
         "title",
@@ -601,17 +552,11 @@ def update_historical_person(person_id):
             )
 
     if "is_published" in data:
-        is_published = data.get(
-            "is_published"
-        )
-
+        is_published = data.get("is_published")
         if not isinstance(is_published, bool):
             return jsonify({
-                "message": (
-                    "is_published must be true or false"
-                )
+                "message": "is_published must be true or false"
             }), 400
-
         person.is_published = is_published
 
     db.session.commit()
@@ -622,13 +567,10 @@ def update_historical_person(person_id):
     }), 200
 
 
-@historical_tree_bp.delete(
-    "/people/<person_id>"
-)
+@historical_tree_bp.delete("/people/<person_id>")
 @admin_required
 def delete_historical_person(person_id):
     person = _get_person(person_id)
-
     if person is None:
         return jsonify({
             "message": "Historical person not found"
@@ -642,42 +584,32 @@ def delete_historical_person(person_id):
     }), 200
 
 
-@historical_tree_bp.post(
-    "/relationships"
-)
+@historical_tree_bp.post("/relationships")
 @admin_required
 def create_historical_relationship():
-    data = request.get_json(
-        silent=True
-    ) or {}
+    data = request.get_json(silent=True) or {}
 
     parent_id = _parse_uuid(
         data.get("parent_id")
     )
-
     child_id = _parse_uuid(
         data.get("child_id")
     )
 
     if parent_id is None or child_id is None:
         return jsonify({
-            "message": (
-                "Valid parent_id and child_id are required"
-            )
+            "message": "Valid parent_id and child_id are required"
         }), 400
 
     if parent_id == child_id:
         return jsonify({
-            "message": (
-                "A person cannot be their own descendant"
-            )
+            "message": "A person cannot be their own descendant"
         }), 400
 
     parent = db.session.get(
         HistoricalPerson,
         parent_id,
     )
-
     child = db.session.get(
         HistoricalPerson,
         child_id,
@@ -688,21 +620,12 @@ def create_historical_relationship():
             "message": "Parent or child not found"
         }), 404
 
-    if parent.group_id != child.group_id:
-        return jsonify({
-            "message": (
-                "Parent and child must belong to the same historical tree group"
-            )
-        }), 409
-
     if _would_create_cycle(
         parent_id,
         child_id,
     ):
         return jsonify({
-            "message": (
-                "Historical relationship would create a cycle"
-            )
+            "message": "Historical relationship would create a cycle"
         }), 409
 
     relationship_type = str(
@@ -710,36 +633,26 @@ def create_historical_relationship():
             "relationship_type",
             "parent",
         )
-    ).strip()
-
-    if not relationship_type:
-        relationship_type = "parent"
+    ).strip() or "parent"
 
     existing = (
         HistoricalRelationship.query
         .filter_by(
             parent_id=parent_id,
             child_id=child_id,
-            relationship_type=(
-                relationship_type
-            ),
+            relationship_type=relationship_type,
         )
         .first()
     )
-
     if existing is not None:
         return jsonify({
-            "message": (
-                "Historical relationship already exists"
-            )
+            "message": "Historical relationship already exists"
         }), 409
 
     relationship = HistoricalRelationship(
         parent_id=parent_id,
         child_id=child_id,
-        relationship_type=(
-            relationship_type
-        ),
+        relationship_type=relationship_type,
         notes=_clean_optional_string(
             data.get("notes")
         ),
@@ -758,18 +671,13 @@ def create_historical_relationship():
     "/relationships/<relationship_id>"
 )
 @admin_required
-def delete_historical_relationship(
-    relationship_id,
-):
+def delete_historical_relationship(relationship_id):
     relationship = _get_relationship(
         relationship_id
     )
-
     if relationship is None:
         return jsonify({
-            "message": (
-                "Historical relationship not found"
-            )
+            "message": "Historical relationship not found"
         }), 404
 
     db.session.delete(relationship)

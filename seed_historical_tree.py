@@ -1,12 +1,23 @@
-"""Seed the Caruban Nagari historical genealogy from the supplied 2021 Kanoman manuscript transcription.
+"""Seed Caruban Nagari historical genealogy as linked small-family groups.
 
 Run from the backend project root:
     python seed_historical_tree.py
 
-The seed is non-destructive and idempotent for records created by this script:
-- deterministic UUIDv5 IDs are used for every person and relationship;
-- re-running updates those same seeded rows instead of duplicating them;
-- unrelated/manual historical-tree rows are not deleted or modified.
+Model:
+- Historical people and parent/child relationships remain global.
+- Every person that has direct children in the source becomes the head of one
+  small family group.
+- A child that later has children of their own naturally becomes the head of
+  another group, so the UI can continue from one family to the next.
+- The source contains 246 people, 244 parent/child relationships, and 18
+  small-family groups.
+
+The seed is idempotent for records created by this script:
+- deterministic UUIDv5 IDs are used;
+- re-running updates seeded rows instead of duplicating them;
+- unrelated/manual people and relationships are untouched;
+- the two legacy Step 20.2 whole-tree groups created by an earlier seed are
+  removed by deterministic ID because they are no longer part of the model.
 """
 
 from __future__ import annotations
@@ -26,6 +37,7 @@ NAMESPACE = uuid.UUID("3cc95cc4-24e4-4f8a-8f40-c3fb7a2d39af")
 def stable_uuid(kind: str, key: str) -> uuid.UUID:
     return uuid.uuid5(NAMESPACE, f"{kind}:{key}")
 
+
 PEOPLE = [{'key': 'sgj',
   'name': 'Maulana Syarif Hidayatullah / Sunan Gunung Jati',
   'description': 'Memerintah (1479–1528).'},
@@ -38,39 +50,27 @@ PEOPLE = [{'key': 'sgj',
   'name': 'Ratu Wulung Ayu',
   'description': 'Garwa Pangeran Paseh / Fathillah, putra Raja Aceh.'},
  {'key': 'sgj_pesaraean', 'name': 'Pangeran Pesaraean', 'description': 'Memerintah (1529–1552).'},
- {'key': 'sgj_ratu_martasari',
-  'name': 'Ratu Martasari',
-  'description': 'Garwa Pangeran Palakaran.'},
+ {'key': 'sgj_ratu_martasari', 'name': 'Ratu Martasari', 'description': 'Garwa Pangeran Palakaran.'},
  {'key': 'wulung_ratu_agung', 'name': 'Ratu Agung', 'description': None},
  {'key': 'wulung_pangeran_paseh', 'name': 'Pangeran Paseh', 'description': None},
  {'key': 'wulung_pangeran_pekik', 'name': 'Pangeran Pekik', 'description': None},
  {'key': 'wulung_pangeran_agung', 'name': 'Pangeran Agung', 'description': None},
- {'key': 'wulung_ratu_wanawati',
-  'name': 'Ratu Wanawati',
-  'description': 'Garwa Pangeran Dipati Cerbon.'},
+ {'key': 'wulung_ratu_wanawati', 'name': 'Ratu Wanawati', 'description': 'Garwa Pangeran Dipati Cerbon.'},
  {'key': 'pesaraean_kesatriyan', 'name': 'Pangeran Kesatriyan', 'description': None},
  {'key': 'pesaraean_ratu_winaon', 'name': 'Ratu Winaon', 'description': None},
  {'key': 'pesaraean_ratu_emas',
   'name': 'Ratu Emas',
   'description': 'Garwa Tu Bagus Angke, putra Sultan Banten.'},
- {'key': 'pesaraean_dipati_anom_carbon',
-  'name': 'Pangeran Dipati Anom Carbon',
-  'description': None},
+ {'key': 'pesaraean_dipati_anom_carbon', 'name': 'Pangeran Dipati Anom Carbon', 'description': None},
  {'key': 'pesaraean_panembahan_losari', 'name': 'Panembahan Losari', 'description': None},
  {'key': 'pesaraean_pangeran_waruju', 'name': 'Pangeran Waruju', 'description': None},
- {'key': 'martasari_pangeran_santri',
-  'name': 'Pangeran Santri',
-  'description': 'Garwa Pucuk Umun.'},
- {'key': 'santri_prabu_geusan_ulun',
-  'name': 'Prabu Geusan Ulun / Angkawijaya',
-  'description': None},
+ {'key': 'martasari_pangeran_santri', 'name': 'Pangeran Santri', 'description': 'Garwa Pucuk Umun.'},
+ {'key': 'santri_prabu_geusan_ulun', 'name': 'Prabu Geusan Ulun / Angkawijaya', 'description': None},
  {'key': 'sedang_kemuning',
   'name': 'Pangeran Sedang Kemuning / Dipati Carbon I',
-  'description': 'The source begins this branch separately and does not explicitly state this '
-                 'person’s parent in the supplied text.'},
- {'key': 'panembahan_ratu_cerbon_kasiji',
-  'name': 'Panembahan Ratu Cerbon Kasiji',
-  'description': None},
+  'description': 'The source begins this branch separately and does not explicitly state this person’s '
+                 'parent in the supplied text.'},
+ {'key': 'panembahan_ratu_cerbon_kasiji', 'name': 'Panembahan Ratu Cerbon Kasiji', 'description': None},
  {'key': 'sedang_kemuning_pangeran_manis', 'name': 'Pangeran Manis', 'description': None},
  {'key': 'sedang_kemuning_pangeran_wirasuta', 'name': 'Pangeran Wirasuta', 'description': None},
  {'key': 'sedang_kemuning_ratu_sewuh', 'name': 'Ratu Sewuh', 'description': None},
@@ -82,9 +82,9 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'kasiji_arya_kidul', 'name': 'Pangeran Arya Kidul', 'description': None},
  {'key': 'kasiji_adipati_sedang_gayam',
   'name': 'Pangeran Adipati Cerbon / Pangeran Adipati Sedang Gayam',
-  'description': "Earlier in the source this appears as 'Pangeran Adipati kopi Carbon atawa "
-                 "Pangeran Adipati Sedang Gayam'. The later heading uses 'Pangeran Adipati Cerbon "
-                 "atawa Pangeran Adipati Sedanggayam'."},
+  'description': "Earlier in the source this appears as 'Pangeran Adipati kopi Carbon atawa Pangeran Adipati "
+                 "Sedang Gayam'. The later heading uses 'Pangeran Adipati Cerbon atawa Pangeran Adipati "
+                 "Sedanggayam'."},
  {'key': 'sedang_gayam_ratu_puteri', 'name': 'Ratu Puteri', 'description': None},
  {'key': 'girilaya', 'name': 'Panembahan Ratu Cerbon Kapingdo Girilaya', 'description': None},
  {'key': 'girilaya_suryaningrat', 'name': 'Pangeran Suryaningrat', 'description': None},
@@ -96,13 +96,9 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'girilaya_ratu_galampo', 'name': 'Ratu Galampo', 'description': None},
  {'key': 'girilaya_ratu_katijah', 'name': 'Ratu Katijah', 'description': None},
  {'key': 'girilaya_pangeran_alas', 'name': 'Pangeran Alas', 'description': None},
- {'key': 'girilaya_kusumajaya_kajawanan',
-  'name': 'Pangeran Kusumajaya Kajawanan',
-  'description': None},
+ {'key': 'girilaya_kusumajaya_kajawanan', 'name': 'Pangeran Kusumajaya Kajawanan', 'description': None},
  {'key': 'girilaya_suryadiradiya', 'name': 'Pangeran Suryadiradiya', 'description': None},
- {'key': 'girilaya_wangsakerta',
-  'name': 'Panembahan Katimang Wangsakerta Kasiji',
-  'description': None},
+ {'key': 'girilaya_wangsakerta', 'name': 'Panembahan Katimang Wangsakerta Kasiji', 'description': None},
  {'key': 'badridin_1',
   'name': 'Sultan Anom Gusti Badridin Kartawijaya Kanoman Kaping Siji (1)',
   'description': None},
@@ -124,12 +120,8 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'badridin_12_kelungsu', 'name': 'Ratu Kelungsu', 'description': None},
  {'key': 'badridin_13_adipati_atanggah', 'name': 'Pangeran Adipati Atanggah', 'description': None},
  {'key': 'badridin_14_ampaitan', 'name': 'Ratu Ampaitan', 'description': None},
- {'key': 'badridin_15_adipati_ranamanggala',
-  'name': 'Pangeran Adipati Ranamanggala',
-  'description': None},
- {'key': 'badridin_16_adipati_raja_kusuma',
-  'name': 'Pangeran Adipati Raja Kusuma',
-  'description': None},
+ {'key': 'badridin_15_adipati_ranamanggala', 'name': 'Pangeran Adipati Ranamanggala', 'description': None},
+ {'key': 'badridin_16_adipati_raja_kusuma', 'name': 'Pangeran Adipati Raja Kusuma', 'description': None},
  {'key': 'badridin_17_kaprabon_sulaiman',
   'name': 'Pangeran Adipati Kaprabon Sulaiman Kaprabonan',
   'description': None},
@@ -145,14 +137,10 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'badridin_27_adipati_madengda', 'name': 'Pangeran Adipati Madengda', 'description': None},
  {'key': 'badridin_28_kusuma_ningyun', 'name': 'Pangeran Kusuma Ningyun', 'description': None},
  {'key': 'badridin_29_rana', 'name': 'Pangeran Rana', 'description': None},
- {'key': 'badridin_30_adipati_pringgabaya',
-  'name': 'Pangeran Adipati Pringgabaya',
-  'description': None},
+ {'key': 'badridin_30_adipati_pringgabaya', 'name': 'Pangeran Adipati Pringgabaya', 'description': None},
  {'key': 'badridin_31_duwet', 'name': 'Pangeran Duwet', 'description': None},
  {'key': 'badridin_32_raja_kiyandra', 'name': 'Ratu Raja Kiyandra', 'description': None},
- {'key': 'badridin_33_adipati_raja_putra',
-  'name': 'Pangeran Adipati Raja Putra',
-  'description': None},
+ {'key': 'badridin_33_adipati_raja_putra', 'name': 'Pangeran Adipati Raja Putra', 'description': None},
  {'key': 'kalirudin_2',
   'name': 'Sultan Anom Kalirudin Kanoman Kaping Pindo (2) / Sultan Mandurareja',
   'description': None},
@@ -167,71 +155,46 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'kalirudin_09_karna', 'name': 'Pangeran Karna', 'description': None},
  {'key': 'alimudin_3',
   'name': 'Sultan Kanoman Alimudin / Ngalimudin Kanoman Kaping Telu (3)',
-  'description': "The child list spells the name 'Sultan Ngalimudin Kanoman Kaping Telu'; the "
-                 "following heading spells it 'Sultan Kanoman Alimudin Kanoman Kaping Telu (3)'."},
+  'description': "The child list spells the name 'Sultan Ngalimudin Kanoman Kaping Telu'; the following "
+                 "heading spells it 'Sultan Kanoman Alimudin Kanoman Kaping Telu (3)'."},
  {'key': 'alimudin_01_warok', 'name': 'Pangeran Warok', 'description': None},
  {'key': 'alimudin_02_raja_anom_tangad', 'name': 'Pangeran Raja Anom Tangad', 'description': None},
  {'key': 'alimudin_03_jeruk', 'name': 'Pangeran Jeruk', 'description': None},
  {'key': 'hairidin_4',
   'name': 'Sultan Anom Hairidin / Khaerudin Kanoman Kaping Papat (4)',
-  'description': "The child list uses 'Hairidin'; the following heading uses "
-                 "'Hairidin/Khaerudin'."},
+  'description': "The child list uses 'Hairidin'; the following heading uses 'Hairidin/Khaerudin'."},
  {'key': 'hairidin_01_nuruddin', 'name': 'Pangeran Raja Kabupaten Nuruddin', 'description': None},
  {'key': 'hairidin_02_ngarab_ngorat', 'name': 'Pangeran Raja Ngarab / Ngorat', 'description': None},
  {'key': 'hairidin_03_cerbon_suni',
   'name': 'Ratu Raja Cerbon Suni',
   'description': "The source marks this entry 'tdk terbaca' (not clearly readable)."},
- {'key': 'hairidin_04_mandurareja_ngabid',
-  'name': 'Pangeran Raja Mandurareja Ngabid',
-  'description': None},
+ {'key': 'hairidin_04_mandurareja_ngabid', 'name': 'Pangeran Raja Mandurareja Ngabid', 'description': None},
  {'key': 'hairidin_05_jafarudin', 'name': 'Pangeran Jafarudin', 'description': None},
  {'key': 'hairidin_06_muhayidin', 'name': 'Pangeran Muhayidin', 'description': None},
- {'key': 'hairidin_07_kayudin_ngasikin',
-  'name': 'Pangeran Muhammad Kayudin Ngasikin',
-  'description': None},
- {'key': 'hairidin_08_ngaripin_ngasidin',
-  'name': 'Pangeran Raja Ngaripin Ngasidin',
-  'description': None},
- {'key': 'hairidin_09_muhammad_mangkur',
-  'name': 'Pangeran Raja Muhammad Mangkur',
-  'description': None},
+ {'key': 'hairidin_07_kayudin_ngasikin', 'name': 'Pangeran Muhammad Kayudin Ngasikin', 'description': None},
+ {'key': 'hairidin_08_ngaripin_ngasidin', 'name': 'Pangeran Raja Ngaripin Ngasidin', 'description': None},
+ {'key': 'hairidin_09_muhammad_mangkur', 'name': 'Pangeran Raja Muhammad Mangkur', 'description': None},
  {'key': 'hairidin_10_rogawa_suaima', 'name': 'Pangeran Raja Rogawa Suaima', 'description': None},
- {'key': 'hairidin_11_kesatriya_timbul',
-  'name': 'Pangeran Raja Kesatriya Timbul',
-  'description': None},
+ {'key': 'hairidin_11_kesatriya_timbul', 'name': 'Pangeran Raja Kesatriya Timbul', 'description': None},
  {'key': 'hairidin_12_mundira', 'name': 'Ratu Mundira', 'description': None},
  {'key': 'hairidin_13_kanigara', 'name': 'Pangeran Kanigara', 'description': None},
  {'key': 'hairidin_14_mangkaradiya', 'name': 'Ratu Raja Mangkaradiya', 'description': None},
  {'key': 'hairidin_15_carhizah', 'name': 'Ratu Carhizah', 'description': None},
- {'key': 'hairidin_16_kusuma_hasanudin',
-  'name': 'Pangeran Raja Kusuma Hasanudin',
-  'description': None},
+ {'key': 'hairidin_16_kusuma_hasanudin', 'name': 'Pangeran Raja Kusuma Hasanudin', 'description': None},
  {'key': 'hairidin_17_iskandar', 'name': 'Pangeran Raja Iskandar', 'description': None},
  {'key': 'hairidin_18_putera_mahmud', 'name': 'Pangeran Raja Putera Mahmud', 'description': None},
- {'key': 'hairidin_19_bawangin_abu_saat',
-  'name': 'Pangeran Raja Bawangin Abu Saat',
-  'description': None},
+ {'key': 'hairidin_19_bawangin_abu_saat', 'name': 'Pangeran Raja Bawangin Abu Saat', 'description': None},
  {'key': 'hairidin_20_murti_katifah', 'name': 'Ratu Raja Murti Katifah', 'description': None},
  {'key': 'hairidin_21_ngaripin_sahidin', 'name': 'Pangeran Ngaripin Sahidin', 'description': None},
  {'key': 'hairidin_22_lakon', 'name': 'Ratu Lakon', 'description': None},
- {'key': 'hairidin_23_jaenidin_farilan',
-  'name': 'Pangeran Raja Jaenidin Farilan',
-  'description': None},
+ {'key': 'hairidin_23_jaenidin_farilan', 'name': 'Pangeran Raja Jaenidin Farilan', 'description': None},
  {'key': 'hairidin_24_muidah', 'name': 'Ratu Muidah', 'description': None},
- {'key': 'hairidin_25_ailaludin_sangkan',
-  'name': 'Pangeran Ailaludin Sangkan',
-  'description': None},
+ {'key': 'hairidin_25_ailaludin_sangkan', 'name': 'Pangeran Ailaludin Sangkan', 'description': None},
  {'key': 'hairidin_26_mas_rara_talun', 'name': 'Ratu Mas Rara Talun', 'description': None},
- {'key': 'hairidin_27_siwi_ngaidah_guntang_a',
-  'name': 'Ratu Raja Siwi Ngaidah Guntang',
-  'description': None},
- {'key': 'hairidin_28_ambetkasih_safiyah',
-  'name': 'Ratu Raja Ambetkasih Safiyah',
-  'description': None},
+ {'key': 'hairidin_27_siwi_ngaidah_guntang_a', 'name': 'Ratu Raja Siwi Ngaidah Guntang', 'description': None},
+ {'key': 'hairidin_28_ambetkasih_safiyah', 'name': 'Ratu Raja Ambetkasih Safiyah', 'description': None},
  {'key': 'hairidin_29_gubug', 'name': 'Ratu Gubug', 'description': None},
- {'key': 'hairidin_30_mangkarawati_ngafiyah',
-  'name': 'Ratu Raja Mangkarawati Ngafiyah',
-  'description': None},
+ {'key': 'hairidin_30_mangkarawati_ngafiyah', 'name': 'Ratu Raja Mangkarawati Ngafiyah', 'description': None},
  {'key': 'hairidin_31_kaputren', 'name': 'Ratu Raja Kaputren', 'description': None},
  {'key': 'hairidin_32_taif', 'name': 'Pangeran Taif', 'description': None},
  {'key': 'hairidin_33_jubaidah', 'name': 'Ratu Jubaidah', 'description': None},
@@ -254,8 +217,8 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'hairidin_48_siwi', 'name': 'Ratu Raja Siwi', 'description': None},
  {'key': 'hairidin_49_siwi_ngaidah_guntang_b',
   'name': 'Ratu Raja Siwi Ngaidah Guntang',
-  'description': 'This same name also appears as item 27 in the source; both numbered entries are '
-                 'preserved as separate nodes.'},
+  'description': 'This same name also appears as item 27 in the source; both numbered entries are preserved '
+                 'as separate nodes.'},
  {'key': 'hairidin_50_saliyu', 'name': 'Ratu Raja Saliyu', 'description': None},
  {'key': 'hairidin_51_basiroh', 'name': 'Ratu Raja Basiroh', 'description': None},
  {'key': 'hairidin_52_anom_kamil', 'name': 'Pangeran Raja Anom Kamil', 'description': None},
@@ -268,9 +231,7 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'hairidin_57_mandura_abudin', 'name': 'Pangeran Raja Mandura Abudin', 'description': None},
  {'key': 'hairidin_58_padmabrata', 'name': 'Pangeran Padmabrata', 'description': None},
  {'key': 'hairidin_59_warsita', 'name': 'Ratu Warsita', 'description': None},
- {'key': 'hairidin_60_riya_kusumanagara',
-  'name': 'Pangeran Riya Kusumanagara',
-  'description': None},
+ {'key': 'hairidin_60_riya_kusumanagara', 'name': 'Pangeran Riya Kusumanagara', 'description': None},
  {'key': 'imamudin_5',
   'name': 'Sultan Anom Imamudin Abu Soleh, Sultan Kanoman Kaping Lima (5)',
   'description': None},
@@ -282,9 +243,7 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'imamudin_06_jaelani', 'name': 'Ratu Raja Jaelani', 'description': None},
  {'key': 'imamudin_07_kulon', 'name': 'Ratu Raja Kulon', 'description': None},
  {'key': 'imamudin_08_walu', 'name': 'Pangeran Raja Walu', 'description': None},
- {'key': 'imamudin_09_brata_pradikta',
-  'name': "Pangeran Raja Brata Pra' dikta",
-  'description': None},
+ {'key': 'imamudin_09_brata_pradikta', 'name': "Pangeran Raja Brata Pra' dikta", 'description': None},
  {'key': 'imamudin_10_susilabrata', 'name': 'Ratu Raja Susilabrata', 'description': None},
  {'key': 'imamudin_11_teratai', 'name': 'Ratu Raja Teratai', 'description': None},
  {'key': 'imamudin_12_partawijaya', 'name': 'Pangeran Raja Partawijaya', 'description': None},
@@ -304,41 +263,25 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'kamarudin_05_dewi', 'name': 'Ratu Raja Dewi', 'description': None},
  {'key': 'kamarudin_06_kartaningrat', 'name': 'Pangeran Raja Kartaningrat', 'description': None},
  {'key': 'kamarudin_07_kartawijaya', 'name': 'Pangeran Raja Kartawijaya', 'description': None},
- {'key': 'kamarudin_08_muhammad_cerbon',
-  'name': 'Pangeran Raja Muhammad Cerbon',
-  'description': None},
+ {'key': 'kamarudin_08_muhammad_cerbon', 'name': 'Pangeran Raja Muhammad Cerbon', 'description': None},
  {'key': 'nurbuwat_7',
   'name': 'Sultan Anom Kamarudin Raja Nurbuwat, Sultan Kanoman Kaping Pitu (7)',
   'description': None},
  {'key': 'nurbuwat7_01_sularaja', 'name': 'Pangeran Sularaja', 'description': None},
  {'key': 'nurbuwat7_02_brataningrat', 'name': 'Pangeran Brataningrat', 'description': None},
- {'key': 'nurbuwat7_03_saputra_kalirudin',
-  'name': 'Pangeran Saputra Kalirudin',
-  'description': None},
- {'key': 'nurbuwat7_04_makbul_kartawijaya',
-  'name': 'Pangeran Makbul Kartawijaya',
-  'description': None},
- {'key': 'nurbuwat7_05_garambol_ngaisyah',
-  'name': 'Ratu Garambol Siti Ngaisyah',
-  'description': None},
- {'key': 'nurbuwat7_06_waluh_brata_kusuma',
-  'name': 'Pangeran Waluh Brata Kusuma',
-  'description': None},
- {'key': 'nurbuwat7_07_pulai_giri',
-  'name': 'Pangeran Pulai Giri Surya Nurbuwat',
-  'description': None},
+ {'key': 'nurbuwat7_03_saputra_kalirudin', 'name': 'Pangeran Saputra Kalirudin', 'description': None},
+ {'key': 'nurbuwat7_04_makbul_kartawijaya', 'name': 'Pangeran Makbul Kartawijaya', 'description': None},
+ {'key': 'nurbuwat7_05_garambol_ngaisyah', 'name': 'Ratu Garambol Siti Ngaisyah', 'description': None},
+ {'key': 'nurbuwat7_06_waluh_brata_kusuma', 'name': 'Pangeran Waluh Brata Kusuma', 'description': None},
+ {'key': 'nurbuwat7_07_pulai_giri', 'name': 'Pangeran Pulai Giri Surya Nurbuwat', 'description': None},
  {'key': 'nurbuwat7_08_saliyah', 'name': 'Ratu Saliyah', 'description': None},
- {'key': 'nurbuwat7_09_arsad_wijayakarta',
-  'name': 'Pangeran Arsad Wijayakarta',
-  'description': None},
+ {'key': 'nurbuwat7_09_arsad_wijayakarta', 'name': 'Pangeran Arsad Wijayakarta', 'description': None},
  {'key': 'nurbuwat7_10_sari_dana', 'name': 'Ratu Sari Dana', 'description': None},
  {'key': 'nurbuwat7_11_rangganingrat', 'name': 'Ratu Rangganingrat', 'description': None},
  {'key': 'nurbuwat7_12_anifah', 'name': 'Pangeran Anifah', 'description': None},
  {'key': 'nurbuwat7_13_raja_diningrat', 'name': 'Ratu Raja Diningrat', 'description': None},
  {'key': 'nurbuwat7_14_kencana_wungu', 'name': 'Ratu Kencana Wungu', 'description': None},
- {'key': 'nurbuwat7_15_sulur_bratamadenga',
-  'name': 'Pangeran Sulur Bratamadenga',
-  'description': None},
+ {'key': 'nurbuwat7_15_sulur_bratamadenga', 'name': 'Pangeran Sulur Bratamadenga', 'description': None},
  {'key': 'nurbuwat7_16_raja_kusumaningrat', 'name': 'Ratu Raja Kusumaningrat', 'description': None},
  {'key': 'nurbuwat7_17_muhammad_dawud', 'name': 'Pangeran Muhammad Dawud', 'description': None},
  {'key': 'nurbuwat7_18_siti_rasmi', 'name': 'Ratu Siti Rasmi', 'description': None},
@@ -346,16 +289,10 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'nurbuwat7_20_raja_cerbon_pangeran', 'name': 'Pangeran Raja Cerbon', 'description': None},
  {'key': 'nurbuwat7_21_raja_cerbon_ratu', 'name': 'Ratu Raja Cerbon', 'description': None},
  {'key': 'nurbuwat7_22_ratna_adiintan', 'name': 'Ratu Ratna Adiintan', 'description': None},
- {'key': 'nurbuwat7_23_silir_hudayabrata',
-  'name': 'Pangeran Silir Hudayabrata',
-  'description': None},
+ {'key': 'nurbuwat7_23_silir_hudayabrata', 'name': 'Pangeran Silir Hudayabrata', 'description': None},
  {'key': 'nurbuwat7_24_mandapa', 'name': 'Ratu Mandapa', 'description': None},
- {'key': 'nurbuwat7_25_dzulhaji_prabakusuma',
-  'name': 'Pangeran Dzulhaji Prabakusuma',
-  'description': None},
- {'key': 'nurbuwat7_26_siti_fatimah',
-  'name': 'Ratu Siti Fatimah Kusumaningrat',
-  'description': None},
+ {'key': 'nurbuwat7_25_dzulhaji_prabakusuma', 'name': 'Pangeran Dzulhaji Prabakusuma', 'description': None},
+ {'key': 'nurbuwat7_26_siti_fatimah', 'name': 'Ratu Siti Fatimah Kusumaningrat', 'description': None},
  {'key': 'nurbuwat7_27_drajat', 'name': 'Pangeran Drajat', 'description': None},
  {'key': 'nurbuwat7_28_raja_iskandar', 'name': 'Pangeran Raja Iskandar', 'description': None},
  {'key': 'dzulkarnaen_8',
@@ -374,14 +311,11 @@ PEOPLE = [{'key': 'sgj',
  {'key': 'dzulkarnaen_11_romla', 'name': 'Ratu Romla', 'description': None},
  {'key': 'dzulkarnaen_13_gumiwang',
   'name': 'Ratu Gumiwang',
-  'description': 'The source numbering jumps from 11 to 13; no item 12 is present in the supplied '
-                 'document.'},
+  'description': 'The source numbering jumps from 11 to 13; no item 12 is present in the supplied document.'},
  {'key': 'dzulkarnaen_14_siyam', 'name': 'Ratu Siyam', 'description': None},
  {'key': 'dzulkarnaen_15_cahya', 'name': 'Ratu Cahya', 'description': None},
  {'key': 'dzulkarnaen_16_nurani', 'name': 'Ratu Nurani', 'description': None},
- {'key': 'dzulkarnaen_17_jaelani_aryadiradeya',
-  'name': 'Elang Jaelani Aryadiradeya',
-  'description': None},
+ {'key': 'dzulkarnaen_17_jaelani_aryadiradeya', 'name': 'Elang Jaelani Aryadiradeya', 'description': None},
  {'key': 'nurbuwat_9',
   'name': 'Pangeran Raja Nurbuwat, Sultan Kanoman Kaping Sanga (9)',
   'description': None},
@@ -402,75 +336,6 @@ PEOPLE = [{'key': 'sgj',
   'name': 'Pangeran Raja Muhammad Nurus, Sultan Kanoman Kaping Sepuluh (10)',
   'description': None}]
 
-
-
-GROUPS = [
-    {
-        "key": "sunan_gunung_jati",
-        "name": "Sunan Gunung Jati",
-        "description": (
-            "Cabang silsilah yang berawal dari Maulana Syarif Hidayatullah / "
-            "Sunan Gunung Jati dalam naskah sumber."
-        ),
-        "root_key": "sgj",
-    },
-    {
-        "key": "keraton_kanoman",
-        "name": "Keraton Kanoman",
-        "description": (
-            "Cabang silsilah Keraton Kanoman yang dalam naskah sumber dimulai "
-            "terpisah dari Pangeran Sedang Kemuning / Dipati Carbon I."
-        ),
-        "root_key": "sedang_kemuning",
-    },
-]
-
-
-def build_group_membership() -> dict[str, str]:
-    adjacency = {item["key"]: set() for item in PEOPLE}
-
-    for parent_key, child_key in EDGES:
-        adjacency[parent_key].add(child_key)
-        adjacency[child_key].add(parent_key)
-
-    membership: dict[str, str] = {}
-
-    for group in GROUPS:
-        group_key = group["key"]
-        root_key = group["root_key"]
-
-        pending = [root_key]
-        visited = set()
-
-        while pending:
-            current = pending.pop()
-
-            if current in visited:
-                continue
-
-            visited.add(current)
-
-            existing = membership.get(current)
-            if existing is not None and existing != group_key:
-                raise RuntimeError(
-                    f"Seed person {current} belongs to multiple historical groups"
-                )
-
-            membership[current] = group_key
-            pending.extend(adjacency[current] - visited)
-
-    missing = [
-        item["key"]
-        for item in PEOPLE
-        if item["key"] not in membership
-    ]
-
-    if missing:
-        raise RuntimeError(
-            "Historical seed people without a group: " + ", ".join(missing)
-        )
-
-    return membership
 
 EDGES = [('sgj', 'sgj_bratakelana'),
  ('sgj', 'sgj_jayakelana'),
@@ -717,40 +582,59 @@ EDGES = [('sgj', 'sgj_bratakelana'),
  ('nurbuwat_9', 'nurbuwat9_13_sidiq'),
  ('nurbuwat_9', 'nurus_10')]
 
+
+# One family group per person who has direct children in the supplied source.
+# Order follows the manuscript / edge order.
+FAMILY_HEAD_KEYS = []
+_seen_heads = set()
+
+for _parent_key, _child_key in EDGES:
+    if _parent_key not in _seen_heads:
+        _seen_heads.add(_parent_key)
+        FAMILY_HEAD_KEYS.append(_parent_key)
+
+del _seen_heads
+del _parent_key
+del _child_key
+
+
+# Deterministic IDs used by the previous, now-obsolete whole-tree grouping seed.
+LEGACY_GROUP_KEYS = (
+    "sunan_gunung_jati",
+    "keraton_kanoman",
+)
+
+
 def validate_seed_data() -> None:
     keys = [item["key"] for item in PEOPLE]
+
     if len(keys) != len(set(keys)):
         raise RuntimeError("Duplicate person key in seed data")
 
     key_set = set(keys)
-
-    group_keys = [group["key"] for group in GROUPS]
-    if len(group_keys) != len(set(group_keys)):
-        raise RuntimeError("Duplicate historical group key in seed data")
-
-    for group in GROUPS:
-        if group["root_key"] not in key_set:
-            raise RuntimeError(
-                f"Historical group root not found: {group['root_key']}"
-            )
 
     for parent_key, child_key in EDGES:
         if parent_key not in key_set or child_key not in key_set:
             raise RuntimeError(
                 f"Edge references unknown person: {parent_key} -> {child_key}"
             )
+
         if parent_key == child_key:
             raise RuntimeError(f"Self-edge found for {parent_key}")
+
+    if len(FAMILY_HEAD_KEYS) != 18:
+        raise RuntimeError(
+            "Expected 18 small-family heads from the supplied manuscript, "
+            f"found {len(FAMILY_HEAD_KEYS)}"
+        )
 
 
 def seed() -> None:
     validate_seed_data()
 
-    group_membership = build_group_membership()
-
-    group_key_to_id = {
-        group["key"]: stable_uuid("group", group["key"])
-        for group in GROUPS
+    person_by_key = {
+        item["key"]: item
+        for item in PEOPLE
     }
 
     key_to_id = {
@@ -758,48 +642,37 @@ def seed() -> None:
         for item in PEOPLE
     }
 
-    created_groups = 0
-    updated_groups = 0
     created_people = 0
     updated_people = 0
+    created_groups = 0
+    updated_groups = 0
+    removed_legacy_groups = 0
     created_edges = 0
     updated_edges = 0
 
     try:
-        for group_data in GROUPS:
-            group_id = group_key_to_id[group_data["key"]]
-            group = db.session.get(HistoricalTreeGroup, group_id)
-
-            if group is None:
-                group = HistoricalTreeGroup(id=group_id)
-                db.session.add(group)
-                created_groups += 1
-            else:
-                updated_groups += 1
-
-            group.name = group_data["name"]
-            group.description = group_data.get("description")
-            group.is_published = True
-
-        db.session.flush()
-
+        # People must exist before groups because groups reference their head.
         for item in PEOPLE:
             person_id = key_to_id[item["key"]]
-            person = db.session.get(HistoricalPerson, person_id)
+            person = db.session.get(
+                HistoricalPerson,
+                person_id,
+            )
 
             if person is None:
-                person = HistoricalPerson(id=person_id)
+                person = HistoricalPerson(
+                    id=person_id
+                )
                 db.session.add(person)
                 created_people += 1
             else:
                 updated_people += 1
 
-            person.group_id = group_key_to_id[
-                group_membership[item["key"]]
-            ]
             person.name = item["name"]
             person.title = None
-            person.description = item.get("description")
+            person.description = item.get(
+                "description"
+            )
             person.birth_year = None
             person.death_year = None
             person.location = None
@@ -809,16 +682,75 @@ def seed() -> None:
 
         db.session.flush()
 
+        # Remove only the two deterministic seed-owned groups from the old
+        # "Sunan Gunung Jati / Keraton Kanoman" grouping approach.
+        for legacy_key in LEGACY_GROUP_KEYS:
+            legacy_id = stable_uuid(
+                "group",
+                legacy_key,
+            )
+            legacy_group = db.session.get(
+                HistoricalTreeGroup,
+                legacy_id,
+            )
+
+            if legacy_group is not None:
+                db.session.delete(legacy_group)
+                removed_legacy_groups += 1
+
+        db.session.flush()
+
+        # A family group is one head person plus their direct children.
+        # Previous/next family connections are derived from global edges.
+        for index, head_key in enumerate(
+            FAMILY_HEAD_KEYS,
+            start=1,
+        ):
+            head = person_by_key[head_key]
+            group_id = stable_uuid(
+                "family_group",
+                head_key,
+            )
+            group = db.session.get(
+                HistoricalTreeGroup,
+                group_id,
+            )
+
+            if group is None:
+                group = HistoricalTreeGroup(
+                    id=group_id
+                )
+                db.session.add(group)
+                created_groups += 1
+            else:
+                updated_groups += 1
+
+            group.name = f"Keluarga {head['name']}"
+            group.head_person_id = key_to_id[head_key]
+            group.description = (
+                "Keluarga inti berdasarkan anak-anak yang "
+                "tercantum langsung dalam naskah sumber."
+            )
+            group.sort_order = index
+            group.is_published = True
+
+        db.session.flush()
+
         for parent_key, child_key in EDGES:
             edge_key = f"{parent_key}>{child_key}:parent"
-            relationship_id = stable_uuid("relationship", edge_key)
+            relationship_id = stable_uuid(
+                "relationship",
+                edge_key,
+            )
             relationship = db.session.get(
                 HistoricalRelationship,
                 relationship_id,
             )
 
             if relationship is None:
-                relationship = HistoricalRelationship(id=relationship_id)
+                relationship = HistoricalRelationship(
+                    id=relationship_id
+                )
                 db.session.add(relationship)
                 created_edges += 1
             else:
@@ -836,9 +768,10 @@ def seed() -> None:
         raise
 
     print(
-        "Historical tree seed complete: "
-        f"{created_groups} groups created, "
-        f"{updated_groups} groups updated, "
+        "Historical family seed complete: "
+        f"{created_groups} family groups created, "
+        f"{updated_groups} family groups updated, "
+        f"{removed_legacy_groups} legacy groups removed, "
         f"{created_people} people created, "
         f"{updated_people} people updated, "
         f"{created_edges} relationships created, "
@@ -848,5 +781,6 @@ def seed() -> None:
 
 if __name__ == "__main__":
     app = create_app()
+
     with app.app_context():
         seed()

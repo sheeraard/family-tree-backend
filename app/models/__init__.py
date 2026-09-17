@@ -19,6 +19,10 @@ from app.models.culture_content import (
     CultureContent,
 )
 
+from app.models.historical_tree_group import (
+    HistoricalTreeGroup,
+)
+
 from app.models.historical_person import (
     HistoricalPerson,
 )

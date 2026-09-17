@@ -12,6 +12,8 @@ from flask_jwt_extended import (
     jwt_required,
 )
 
+from sqlalchemy.orm import joinedload
+
 from app.extensions import db
 
 from app.models import (
@@ -28,6 +30,52 @@ umkm_bp = Blueprint(
     "umkm",
     __name__,
 )
+
+
+def _pagination_args(
+    default_per_page=20,
+):
+    page = request.args.get(
+        "page",
+        default=1,
+        type=int,
+    ) or 1
+
+    per_page = request.args.get(
+        "per_page",
+        default=default_per_page,
+        type=int,
+    ) or default_per_page
+
+    page = max(1, page)
+    per_page = min(
+        100,
+        max(1, per_page),
+    )
+
+    return page, per_page
+
+
+def _pagination_payload(
+    page,
+    per_page,
+    total,
+):
+    pages = (
+        (total + per_page - 1)
+        // per_page
+        if total > 0
+        else 0
+    )
+
+    return {
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "pages": pages,
+        "has_next": page < pages,
+        "has_prev": page > 1,
+    }
 
 
 def _current_user():
@@ -111,6 +159,11 @@ def create_application():
 
     existing = (
         UmkmApplication.query
+        .options(
+            joinedload(
+                UmkmApplication.applicant
+            )
+        )
         .filter_by(
             user_id=user.id
         )
@@ -258,6 +311,11 @@ def get_my_application():
 
     application = (
         UmkmApplication.query
+        .options(
+            joinedload(
+                UmkmApplication.applicant
+            )
+        )
         .filter_by(
             user_id=user.id
         )
@@ -289,8 +347,17 @@ def get_applications():
         "status"
     )
 
+    page, per_page = (
+        _pagination_args()
+    )
+
     query = (
         UmkmApplication.query
+        .options(
+            joinedload(
+                UmkmApplication.applicant
+            )
+        )
     )
 
     if status:
@@ -309,6 +376,8 @@ def get_applications():
             status=status
         )
 
+    total = query.count()
+
     applications = (
         query
         .order_by(
@@ -316,6 +385,10 @@ def get_applications():
             .created_at
             .desc()
         )
+        .offset(
+            (page - 1) * per_page
+        )
+        .limit(per_page)
         .all()
     )
 
@@ -325,9 +398,14 @@ def get_applications():
             for item
             in applications
         ],
-
-        "count":
-            len(applications),
+        "count": len(applications),
+        "pagination": (
+            _pagination_payload(
+                page,
+                per_page,
+                total,
+            )
+        ),
     }), 200
 
 

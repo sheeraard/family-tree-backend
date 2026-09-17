@@ -15,6 +15,7 @@ import uuid
 
 from app import create_app
 from app.extensions import db
+from app.models.historical_tree_group import HistoricalTreeGroup
 from app.models.historical_person import HistoricalPerson
 from app.models.historical_relationship import HistoricalRelationship
 
@@ -401,6 +402,76 @@ PEOPLE = [{'key': 'sgj',
   'name': 'Pangeran Raja Muhammad Nurus, Sultan Kanoman Kaping Sepuluh (10)',
   'description': None}]
 
+
+
+GROUPS = [
+    {
+        "key": "sunan_gunung_jati",
+        "name": "Sunan Gunung Jati",
+        "description": (
+            "Cabang silsilah yang berawal dari Maulana Syarif Hidayatullah / "
+            "Sunan Gunung Jati dalam naskah sumber."
+        ),
+        "root_key": "sgj",
+    },
+    {
+        "key": "keraton_kanoman",
+        "name": "Keraton Kanoman",
+        "description": (
+            "Cabang silsilah Keraton Kanoman yang dalam naskah sumber dimulai "
+            "terpisah dari Pangeran Sedang Kemuning / Dipati Carbon I."
+        ),
+        "root_key": "sedang_kemuning",
+    },
+]
+
+
+def build_group_membership() -> dict[str, str]:
+    adjacency = {item["key"]: set() for item in PEOPLE}
+
+    for parent_key, child_key in EDGES:
+        adjacency[parent_key].add(child_key)
+        adjacency[child_key].add(parent_key)
+
+    membership: dict[str, str] = {}
+
+    for group in GROUPS:
+        group_key = group["key"]
+        root_key = group["root_key"]
+
+        pending = [root_key]
+        visited = set()
+
+        while pending:
+            current = pending.pop()
+
+            if current in visited:
+                continue
+
+            visited.add(current)
+
+            existing = membership.get(current)
+            if existing is not None and existing != group_key:
+                raise RuntimeError(
+                    f"Seed person {current} belongs to multiple historical groups"
+                )
+
+            membership[current] = group_key
+            pending.extend(adjacency[current] - visited)
+
+    missing = [
+        item["key"]
+        for item in PEOPLE
+        if item["key"] not in membership
+    ]
+
+    if missing:
+        raise RuntimeError(
+            "Historical seed people without a group: " + ", ".join(missing)
+        )
+
+    return membership
+
 EDGES = [('sgj', 'sgj_bratakelana'),
  ('sgj', 'sgj_jayakelana'),
  ('sgj', 'sgj_trusmi'),
@@ -652,6 +723,17 @@ def validate_seed_data() -> None:
         raise RuntimeError("Duplicate person key in seed data")
 
     key_set = set(keys)
+
+    group_keys = [group["key"] for group in GROUPS]
+    if len(group_keys) != len(set(group_keys)):
+        raise RuntimeError("Duplicate historical group key in seed data")
+
+    for group in GROUPS:
+        if group["root_key"] not in key_set:
+            raise RuntimeError(
+                f"Historical group root not found: {group['root_key']}"
+            )
+
     for parent_key, child_key in EDGES:
         if parent_key not in key_set or child_key not in key_set:
             raise RuntimeError(
@@ -664,17 +746,43 @@ def validate_seed_data() -> None:
 def seed() -> None:
     validate_seed_data()
 
+    group_membership = build_group_membership()
+
+    group_key_to_id = {
+        group["key"]: stable_uuid("group", group["key"])
+        for group in GROUPS
+    }
+
     key_to_id = {
         item["key"]: stable_uuid("person", item["key"])
         for item in PEOPLE
     }
 
+    created_groups = 0
+    updated_groups = 0
     created_people = 0
     updated_people = 0
     created_edges = 0
     updated_edges = 0
 
     try:
+        for group_data in GROUPS:
+            group_id = group_key_to_id[group_data["key"]]
+            group = db.session.get(HistoricalTreeGroup, group_id)
+
+            if group is None:
+                group = HistoricalTreeGroup(id=group_id)
+                db.session.add(group)
+                created_groups += 1
+            else:
+                updated_groups += 1
+
+            group.name = group_data["name"]
+            group.description = group_data.get("description")
+            group.is_published = True
+
+        db.session.flush()
+
         for item in PEOPLE:
             person_id = key_to_id[item["key"]]
             person = db.session.get(HistoricalPerson, person_id)
@@ -686,6 +794,9 @@ def seed() -> None:
             else:
                 updated_people += 1
 
+            person.group_id = group_key_to_id[
+                group_membership[item["key"]]
+            ]
             person.name = item["name"]
             person.title = None
             person.description = item.get("description")
@@ -726,6 +837,8 @@ def seed() -> None:
 
     print(
         "Historical tree seed complete: "
+        f"{created_groups} groups created, "
+        f"{updated_groups} groups updated, "
         f"{created_people} people created, "
         f"{updated_people} people updated, "
         f"{created_edges} relationships created, "

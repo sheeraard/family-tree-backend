@@ -22,6 +22,8 @@ from PIL import (
     UnidentifiedImageError,
 )
 
+from sqlalchemy.orm import joinedload
+
 from app.extensions import db
 from app.models import Product, User
 
@@ -48,6 +50,52 @@ MAX_PRODUCT_IMAGE_DIMENSION = 1800
 PRODUCT_IMAGE_URL_PREFIX = (
     "/api/products/images/"
 )
+
+
+def _pagination_args(
+    default_per_page=20,
+):
+    page = request.args.get(
+        "page",
+        default=1,
+        type=int,
+    ) or 1
+
+    per_page = request.args.get(
+        "per_page",
+        default=default_per_page,
+        type=int,
+    ) or default_per_page
+
+    page = max(1, page)
+    per_page = min(
+        100,
+        max(1, per_page),
+    )
+
+    return page, per_page
+
+
+def _pagination_payload(
+    page,
+    per_page,
+    total,
+):
+    pages = (
+        (total + per_page - 1)
+        // per_page
+        if total > 0
+        else 0
+    )
+
+    return {
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "pages": pages,
+        "has_next": page < pages,
+        "has_prev": page > 1,
+    }
 
 
 def server_error_response(
@@ -392,26 +440,28 @@ def list_products():
         )
     ).strip()
 
-    statement = (
-        db.select(
-            Product
+    page, per_page = (
+        _pagination_args()
+    )
+
+    query = (
+        Product.query
+        .options(
+            joinedload(
+                Product.seller
+            ).joinedload(
+                User.person
+            )
         )
-        .where(
-            Product.is_active
-            .is_(True)
-        )
-        .order_by(
-            Product.created_at
-            .desc()
+        .filter(
+            Product.is_active.is_(True)
         )
     )
 
     if category:
-        statement = (
-            statement.where(
-                Product.category.ilike(
-                    category
-                )
+        query = query.filter(
+            Product.category.ilike(
+                category
             )
         )
 
@@ -431,11 +481,9 @@ def list_products():
                 )
             }), 400
 
-        statement = (
-            statement.where(
-                Product.seller_user_id
-                == seller_user_id
-            )
+        query = query.filter(
+            Product.seller_user_id
+            == seller_user_id
         )
 
     if search:
@@ -443,31 +491,32 @@ def list_products():
             f"%{search}%"
         )
 
-        statement = (
-            statement.where(
-                db.or_(
-                    Product.name.ilike(
-                        search_term
-                    ),
-
-                    Product.description
-                    .ilike(
-                        search_term
-                    ),
-
-                    Product.category.ilike(
-                        search_term
-                    ),
-                )
+        query = query.filter(
+            db.or_(
+                Product.name.ilike(
+                    search_term
+                ),
+                Product.description
+                .ilike(
+                    search_term
+                ),
+                Product.category.ilike(
+                    search_term
+                ),
             )
         )
+
+    total = query.count()
 
     products = (
-        db.session.scalars(
-            statement.limit(
-                100
-            )
+        query
+        .order_by(
+            Product.created_at.desc()
         )
+        .offset(
+            (page - 1) * per_page
+        )
+        .limit(per_page)
         .all()
     )
 
@@ -482,9 +531,13 @@ def list_products():
             for product
             in products
         ],
-
-        "count": len(
-            products
+        "count": len(products),
+        "pagination": (
+            _pagination_payload(
+                page,
+                per_page,
+                total,
+            )
         ),
     }), 200
 
@@ -504,20 +557,77 @@ def list_my_products():
             )
         }), 401
 
-    products = (
-        db.session.scalars(
-            db.select(
-                Product
-            )
-            .where(
-                Product.seller_user_id
-                == user.id
-            )
-            .order_by(
-                Product.created_at
-                .desc()
+    category = str(
+        request.args.get(
+            "category",
+            "",
+        )
+    ).strip()
+
+    search = str(
+        request.args.get(
+            "q",
+            "",
+        )
+    ).strip()
+
+    page, per_page = (
+        _pagination_args()
+    )
+
+    query = (
+        Product.query
+        .options(
+            joinedload(
+                Product.seller
+            ).joinedload(
+                User.person
             )
         )
+        .filter(
+            Product.seller_user_id
+            == user.id
+        )
+    )
+
+    if category:
+        query = query.filter(
+            Product.category.ilike(
+                category
+            )
+        )
+
+    if search:
+        search_term = (
+            f"%{search}%"
+        )
+
+        query = query.filter(
+            db.or_(
+                Product.name.ilike(
+                    search_term
+                ),
+                Product.description
+                .ilike(
+                    search_term
+                ),
+                Product.category.ilike(
+                    search_term
+                ),
+            )
+        )
+
+    total = query.count()
+
+    products = (
+        query
+        .order_by(
+            Product.created_at.desc()
+        )
+        .offset(
+            (page - 1) * per_page
+        )
+        .limit(per_page)
         .all()
     )
 
@@ -532,9 +642,13 @@ def list_my_products():
             for product
             in products
         ],
-
-        "count": len(
-            products
+        "count": len(products),
+        "pagination": (
+            _pagination_payload(
+                page,
+                per_page,
+                total,
+            )
         ),
     }), 200
 

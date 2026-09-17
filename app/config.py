@@ -85,6 +85,38 @@ def get_database_url():
     return database_url
 
 
+def get_int_env(
+    name,
+    default,
+    *,
+    minimum=None,
+):
+    raw_value = os.getenv(
+        name,
+        str(default),
+    )
+
+    try:
+        value = int(
+            raw_value
+        )
+    except ValueError:
+        raise RuntimeError(
+            f"{name} must be an integer"
+        )
+
+    if (
+        minimum is not None
+        and value < minimum
+    ):
+        raise RuntimeError(
+            f"{name} must be at least "
+            f"{minimum}"
+        )
+
+    return value
+
+
 def get_access_token_minutes():
     raw_value = os.getenv(
         "JWT_ACCESS_TOKEN_MINUTES",
@@ -336,8 +368,37 @@ class Config:
     )
 
     SQLALCHEMY_ENGINE_OPTIONS = {
+        # Keep the connection footprint small and
+        # predictable for Railway/PostgreSQL.
         "pool_pre_ping": True,
-        "pool_recycle": 300,
+        "pool_use_lifo": True,
+        "pool_size": get_int_env(
+            "DB_POOL_SIZE",
+            5,
+            minimum=1,
+        ),
+        "max_overflow": get_int_env(
+            "DB_MAX_OVERFLOW",
+            2,
+            minimum=0,
+        ),
+        "pool_timeout": get_int_env(
+            "DB_POOL_TIMEOUT_SECONDS",
+            10,
+            minimum=1,
+        ),
+        "pool_recycle": get_int_env(
+            "DB_POOL_RECYCLE_SECONDS",
+            300,
+            minimum=30,
+        ),
+        "connect_args": {
+            "connect_timeout": get_int_env(
+                "DB_CONNECT_TIMEOUT_SECONDS",
+                10,
+                minimum=1,
+            ),
+        },
     }
 
     #

@@ -9,6 +9,19 @@ from app.extensions import db
 class UmkmApplication(db.Model):
     __tablename__ = "umkm_applications"
 
+    __table_args__ = (
+        db.Index(
+            "ix_umkm_applications_status_created_at",
+            "status",
+            "created_at",
+        ),
+        db.Index(
+            "ix_umkm_applications_user_created_at",
+            "user_id",
+            "created_at",
+        ),
+    )
+
     STATUS_PENDING = "pending"
     STATUS_APPROVED = "approved"
     STATUS_REJECTED = "rejected"

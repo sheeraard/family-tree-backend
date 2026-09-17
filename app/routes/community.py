@@ -12,6 +12,8 @@ from flask_jwt_extended import (
     jwt_required,
 )
 
+from sqlalchemy.orm import joinedload
+
 from app.extensions import db
 from app.models import (
     CommunityPost,
@@ -29,6 +31,52 @@ ALLOWED_POST_TYPES = {
     "event",
     "family_news",
 }
+
+
+def _pagination_args(
+    default_per_page=20,
+):
+    page = request.args.get(
+        "page",
+        default=1,
+        type=int,
+    ) or 1
+
+    per_page = request.args.get(
+        "per_page",
+        default=default_per_page,
+        type=int,
+    ) or default_per_page
+
+    page = max(1, page)
+    per_page = min(
+        100,
+        max(1, per_page),
+    )
+
+    return page, per_page
+
+
+def _pagination_payload(
+    page,
+    per_page,
+    total,
+):
+    pages = (
+        (total + per_page - 1)
+        // per_page
+        if total > 0
+        else 0
+    )
+
+    return {
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "pages": pages,
+        "has_next": page < pages,
+        "has_prev": page > 1,
+    }
 
 
 def get_current_user():
@@ -158,7 +206,20 @@ def get_posts():
         .strip()
     )
 
-    query = CommunityPost.query
+    page, per_page = (
+        _pagination_args()
+    )
+
+    query = (
+        CommunityPost.query
+        .options(
+            joinedload(
+                CommunityPost.author
+            ).joinedload(
+                User.person
+            )
+        )
+    )
 
     if post_type:
         if (
@@ -177,12 +238,17 @@ def get_posts():
             == post_type
         )
 
+    total = query.count()
+
     posts = (
         query
         .order_by(
             CommunityPost.created_at.desc()
         )
-        .limit(100)
+        .offset(
+            (page - 1) * per_page
+        )
+        .limit(per_page)
         .all()
     )
 
@@ -194,7 +260,15 @@ def get_posts():
                     current_user_id=user.id,
                 )
                 for post in posts
-            ]
+            ],
+            "count": len(posts),
+            "pagination": (
+                _pagination_payload(
+                    page,
+                    per_page,
+                    total,
+                )
+            ),
         }
     ), 200
 

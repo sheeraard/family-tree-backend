@@ -15,6 +15,16 @@ class HistoricalPerson(db.Model):
         default=uuid.uuid4,
     )
 
+    group_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey(
+            "historical_tree_groups.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+        index=True,
+    )
+
     name = db.Column(
         db.String(255),
         nullable=False,
@@ -77,6 +87,11 @@ class HistoricalPerson(db.Model):
         onupdate=func.now(),
     )
 
+    group = db.relationship(
+        "HistoricalTreeGroup",
+        back_populates="people",
+    )
+
     outgoing_relationships = db.relationship(
         "HistoricalRelationship",
         foreign_keys=(
@@ -100,6 +115,11 @@ class HistoricalPerson(db.Model):
     def to_dict(self):
         return {
             "id": str(self.id),
+            "group_id": (
+                str(self.group_id)
+                if self.group_id
+                else None
+            ),
             "name": self.name,
             "title": self.title,
             "description": self.description,

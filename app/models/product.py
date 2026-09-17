@@ -12,6 +12,25 @@ from app.extensions import db
 class Product(db.Model):
     __tablename__ = "products"
 
+    __table_args__ = (
+        db.Index(
+            "ix_products_active_created_at",
+            "is_active",
+            "created_at",
+        ),
+        db.Index(
+            "ix_products_seller_created_at",
+            "seller_user_id",
+            "created_at",
+        ),
+        db.Index(
+            "ix_products_active_category_created_at",
+            "is_active",
+            "category",
+            "created_at",
+        ),
+    )
+
     id = db.Column(
         UUID(as_uuid=True),
         primary_key=True,

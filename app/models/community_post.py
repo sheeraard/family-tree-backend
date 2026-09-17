@@ -9,6 +9,14 @@ from app.extensions import db
 class CommunityPost(db.Model):
     __tablename__ = "community_posts"
 
+    __table_args__ = (
+        db.Index(
+            "ix_community_posts_type_created_at",
+            "post_type",
+            "created_at",
+        ),
+    )
+
     id = db.Column(
         UUID(as_uuid=True),
         primary_key=True,

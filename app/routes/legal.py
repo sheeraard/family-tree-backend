@@ -78,7 +78,6 @@ PRIVACY_POLICY_HTML = """
             <li>Nomor telepon</li>
             <li>Tanggal lahir</li>
             <li>Jenis kelamin</li>
-            <li>NIK, apabila pengguna memilih untuk mengisinya</li>
             <li>Foto profil</li>
             <li>Informasi hubungan keluarga dan silsilah</li>
             <li>Informasi UMKM atau usaha</li>
@@ -135,22 +134,7 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>4. NIK</h2>
-
-        <p>
-            Pengisian NIK bersifat opsional kecuali dinyatakan
-            berbeda pada fitur tertentu.
-        </p>
-
-        <p>
-            NIK digunakan hanya untuk fungsi yang membutuhkan
-            identifikasi profil dan tidak ditampilkan secara
-            publik sebagai bagian dari silsilah umum.
-        </p>
-    </section>
-
-    <section>
-        <h2>5. Penyimpanan dan Keamanan Data</h2>
+        <h2>4. Penyimpanan dan Keamanan Data</h2>
 
         <p>
             Kami menggunakan langkah teknis yang wajar untuk
@@ -166,7 +150,7 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>6. Pembagian Informasi</h2>
+        <h2>5. Pembagian Informasi</h2>
 
         <p>
             GEKRAFS tidak menjual data pribadi pengguna.
@@ -185,7 +169,7 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>7. Konten Publik</h2>
+        <h2>6. Konten Publik</h2>
 
         <p>
             Informasi yang secara sengaja dipublikasikan melalui
@@ -196,7 +180,7 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>8. Penghapusan Akun</h2>
+        <h2>7. Penghapusan Akun</h2>
 
         <p>
             Pengguna dapat meminta penghapusan akun melalui
@@ -217,7 +201,7 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>9. Perubahan Kebijakan</h2>
+        <h2>8. Perubahan Kebijakan</h2>
 
         <p>
             Kebijakan Privasi dapat diperbarui untuk
@@ -232,7 +216,7 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>10. Kontak</h2>
+        <h2>9. Kontak</h2>
 
         <p>
             Pertanyaan mengenai privasi atau penggunaan data

@@ -195,23 +195,6 @@ def create_application():
                 "Address is required."
         }), 400
 
-    nik = _clean_optional(
-        data.get("nik")
-    )
-
-    if (
-        nik is not None
-        and (
-            not nik.isdigit()
-            or len(nik) != 16
-        )
-    ):
-        return jsonify({
-            "message": (
-                "NIK must contain "
-                "exactly 16 digits."
-            )
-        }), 400
 
     application = UmkmApplication(
         user_id=user.id,
@@ -231,8 +214,6 @@ def create_application():
                 "description"
             )
         ),
-
-        nik=nik,
 
         document_url=_clean_optional(
             data.get(

@@ -155,9 +155,6 @@ def serialize_profile(
             "gender": (
                 person.gender
             ),
-            "nik": (
-                person.nik
-            ),
             "photo_url": (
                 person.photo_url
             ),
@@ -366,70 +363,6 @@ def update_profile():
                 .strip()
                 .lower()
             )
-
-    if "nik" in data:
-        nik_raw = (
-            data[
-                "nik"
-            ]
-        )
-
-        if (
-            nik_raw is None
-            or str(
-                nik_raw
-            ).strip()
-            == ""
-        ):
-            nik = None
-
-        else:
-            nik = str(
-                nik_raw
-            ).strip()
-
-            if len(
-                nik
-            ) != 16:
-                return jsonify({
-                    "message": (
-                        "NIK must contain "
-                        "16 digits"
-                    )
-                }), 400
-
-            if not nik.isdigit():
-                return jsonify({
-                    "message": (
-                        "NIK must contain "
-                        "only numbers"
-                    )
-                }), 400
-
-            if nik != person.nik:
-                existing_nik = (
-                    db.session.scalar(
-                        db.select(
-                            Person
-                        ).where(
-                            Person.nik
-                            == nik,
-
-                            Person.id
-                            != person.id,
-                        )
-                    )
-                )
-
-                if existing_nik:
-                    return jsonify({
-                        "message": (
-                            "NIK is already "
-                            "registered"
-                        )
-                    }), 409
-
-        person.nik = nik
 
     if "birth_date" in data:
         birth_date_raw = (

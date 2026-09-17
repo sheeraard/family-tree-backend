@@ -61,10 +61,6 @@ class UmkmApplication(db.Model):
         nullable=True,
     )
 
-    nik = db.Column(
-        db.String(32),
-        nullable=True,
-    )
 
     document_url = db.Column(
         db.Text,
@@ -141,8 +137,6 @@ class UmkmApplication(db.Model):
 
             "description":
                 self.description,
-
-            "nik": self.nik,
 
             "document_url":
                 self.document_url,

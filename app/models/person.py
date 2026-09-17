@@ -51,11 +51,6 @@ class Person(db.Model):
         nullable=True,
     )
 
-    nik = db.Column(
-        db.String(16),
-        unique=True,
-        nullable=True,
-    )
 
     photo_url = db.Column(
         db.Text,

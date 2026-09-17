@@ -132,9 +132,6 @@ def register():
         "gender"
     )
 
-    nik_raw = data.get(
-        "nik"
-    )
 
     birth_date_raw = data.get(
         "birth_date"
@@ -168,16 +165,6 @@ def register():
         else None
     )
 
-    nik = (
-        str(nik_raw).strip()
-        if (
-            nik_raw is not None
-            and str(
-                nik_raw
-            ).strip()
-        )
-        else None
-    )
 
     claim_code = (
         str(claim_code_raw)
@@ -236,17 +223,6 @@ def register():
                 )
             }), 409
 
-    if nik:
-        if (
-            not nik.isdigit()
-            or len(nik) != 16
-        ):
-            return jsonify({
-                "message": (
-                    "NIK must contain "
-                    "16 digits"
-                )
-            }), 400
 
     birth_date = None
 
@@ -407,62 +383,12 @@ def register():
                     gender
                 )
 
-            if nik is not None:
-                existing_nik = (
-                    db.session.scalar(
-                        db.select(
-                            Person
-                        ).where(
-                            Person.nik
-                            == nik,
-
-                            Person.id
-                            != claimed_person.id,
-                        )
-                    )
-                )
-
-                if existing_nik:
-                    db.session.rollback()
-
-                    return jsonify({
-                        "message": (
-                            "NIK already "
-                            "registered"
-                        )
-                    }), 409
-
-                claimed_person.nik = (
-                    nik
-                )
 
             person = (
                 claimed_person
             )
 
         else:
-            if nik:
-                existing_nik = (
-                    db.session.scalar(
-                        db.select(
-                            Person
-                        ).where(
-                            Person.nik
-                            == nik
-                        )
-                    )
-                )
-
-                if existing_nik:
-                    db.session.rollback()
-
-                    return jsonify({
-                        "message": (
-                            "NIK already "
-                            "registered"
-                        )
-                    }), 409
-
             person = Person(
                 user_id=(
                     new_user.id
@@ -478,10 +404,6 @@ def register():
 
                 gender=(
                     gender
-                ),
-
-                nik=(
-                    nik
                 ),
             )
 

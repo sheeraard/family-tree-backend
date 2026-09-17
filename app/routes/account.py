@@ -87,8 +87,6 @@ def delete_account():
         #
         person.user_id = None
 
-        person.nik = None
-
         person.photo_url = None
 
         person.claim_code_hash = None

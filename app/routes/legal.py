@@ -615,8 +615,9 @@ def support():
     else:
         contact_html = (
             "<p>"
-            "Silakan hubungi kanal kontak resmi "
+            "Silahkan hubungi kanal kontak resmi "
             "Caruban Nagari / GEKRAFS Cirebon."
+            "gekrafs.noreply@gmail.com"
             "</p>"
         )
 

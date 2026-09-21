@@ -1,7 +1,10 @@
+import os
+
 from flask import (
     Blueprint,
     Response,
 )
+from markupsafe import escape
 
 
 legal_bp = Blueprint(
@@ -435,6 +438,129 @@ TERMS_HTML = """
 """
 
 
+SUPPORT_HTML = """
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+    <title>Dukungan - Caruban Nagari</title>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont,
+                "Segoe UI", sans-serif;
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 32px 20px 64px;
+            line-height: 1.7;
+            color: #202124;
+        }
+
+        h1, h2 {
+            color: #111827;
+        }
+
+        h1 {
+            margin-bottom: 4px;
+        }
+
+        .subtitle {
+            color: #6b7280;
+            margin-bottom: 32px;
+        }
+
+        section {
+            margin-top: 30px;
+        }
+
+        .contact {
+            border: 1px solid #d1d5db;
+            border-radius: 14px;
+            padding: 18px;
+            background: #f9fafb;
+        }
+
+        a {
+            color: #087fa8;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Dukungan Caruban Nagari</h1>
+
+    <div class="subtitle">
+        Bantuan penggunaan aplikasi Caruban Nagari.
+    </div>
+
+    <section>
+        <h2>Akun dan Masuk</h2>
+
+        <p>
+            Jika mengalami kendala masuk, verifikasi email,
+            atau lupa kata sandi, gunakan fitur yang tersedia
+            pada halaman masuk aplikasi.
+        </p>
+    </section>
+
+    <section>
+        <h2>Silsilah Keluarga</h2>
+
+        <p>
+            Untuk kendala terkait anggota keluarga, hubungan
+            keluarga, kode klaim, atau tampilan silsilah,
+            sertakan penjelasan singkat mengenai masalah yang
+            terjadi saat menghubungi dukungan.
+        </p>
+    </section>
+
+    <section>
+        <h2>Silsilah Sejarah</h2>
+
+        <p>
+            Informasi sejarah disajikan berdasarkan sumber yang
+            digunakan oleh pengelola. Apabila menemukan data
+            yang perlu dikoreksi atau ditinjau, silakan
+            hubungi tim pengelola.
+        </p>
+    </section>
+
+    <section>
+        <h2>UMKM dan Etalase</h2>
+
+        <p>
+            Bantuan mengenai pendaftaran UMKM, status
+            persetujuan, produk, atau informasi usaha dapat
+            disampaikan kepada tim pengelola Caruban Nagari.
+        </p>
+    </section>
+
+    <section>
+        <h2>Kontak Dukungan</h2>
+
+        <div class="contact">
+            {{SUPPORT_CONTACT}}
+        </div>
+    </section>
+
+    <section>
+        <h2>Dokumen</h2>
+
+        <p>
+            <a href="/legal/privacy">Kebijakan Privasi</a>
+            &nbsp;•&nbsp;
+            <a href="/legal/terms">Syarat dan Ketentuan</a>
+        </p>
+    </section>
+</body>
+</html>
+"""
+
+
 @legal_bp.route(
     "/privacy",
     methods=["GET"],
@@ -457,3 +583,51 @@ def terms():
         status=200,
         mimetype="text/html",
     )
+
+
+@legal_bp.route(
+    "/support",
+    methods=["GET"],
+)
+def support():
+    support_email = os.getenv(
+        "SUPPORT_EMAIL",
+        "",
+    ).strip()
+
+    if support_email:
+        safe_email = escape(
+            support_email
+        )
+
+        contact_html = (
+            "<p>"
+            "Email: "
+            f'<a href="mailto:{safe_email}">'
+            f"{safe_email}"
+            "</a>"
+            "</p>"
+            "<p>"
+            "Sertakan jenis perangkat, versi aplikasi, "
+            "dan penjelasan singkat mengenai kendala."
+            "</p>"
+        )
+    else:
+        contact_html = (
+            "<p>"
+            "Silakan hubungi kanal kontak resmi "
+            "Caruban Nagari / GEKRAFS Cirebon."
+            "</p>"
+        )
+
+    html = SUPPORT_HTML.replace(
+        "{{SUPPORT_CONTACT}}",
+        str(contact_html),
+    )
+
+    return Response(
+        html,
+        status=200,
+        mimetype="text/html",
+    )
+

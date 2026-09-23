@@ -1,5 +1,6 @@
 import os
 import re
+from collections import deque
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -19,6 +20,8 @@ from sqlalchemy.orm import joinedload
 from app.extensions import db
 from app.models import (
     CommunityPost,
+    Person,
+    Relationship,
     User,
 )
 from app.models.community_post import (
@@ -344,6 +347,127 @@ def _contains_blocked_content(
     return False
 
 
+def _family_user_ids(
+    user,
+    max_depth=6,
+):
+    """
+    Return registered user IDs in the logged-in
+    user's connected personal genealogy network.
+
+    This intentionally follows the same explicit
+    relationship graph semantics already used by
+    the personal family-tree features: parent,
+    child, sibling, spouse, and any other stored
+    Relationship edge are traversed up to six
+    hops.
+
+    If the account has no Person profile yet,
+    only the account itself is considered part
+    of its family network.
+    """
+    if user.person is None:
+        return {
+            user.id
+        }
+
+    root_person_id = (
+        user.person.id
+    )
+
+    visited = {
+        root_person_id
+    }
+
+    queue = deque([
+        (
+            root_person_id,
+            0,
+        )
+    ])
+
+    while queue:
+        (
+            current_person_id,
+            depth,
+        ) = queue.popleft()
+
+        if depth >= max_depth:
+            continue
+
+        relationships = (
+            db.session.scalars(
+                db.select(
+                    Relationship
+                )
+                .where(
+                    db.or_(
+                        Relationship
+                        .person_a_id
+                        == current_person_id,
+
+                        Relationship
+                        .person_b_id
+                        == current_person_id,
+                    )
+                )
+            )
+            .all()
+        )
+
+        for relationship in relationships:
+            if (
+                relationship.person_a_id
+                == current_person_id
+            ):
+                relative_id = (
+                    relationship.person_b_id
+                )
+            else:
+                relative_id = (
+                    relationship.person_a_id
+                )
+
+            if relative_id in visited:
+                continue
+
+            visited.add(
+                relative_id
+            )
+
+            queue.append(
+                (
+                    relative_id,
+                    depth + 1,
+                )
+            )
+
+    registered_user_ids = set(
+        db.session.scalars(
+            db.select(
+                Person.user_id
+            )
+            .where(
+                Person.id.in_(
+                    visited
+                ),
+                Person.user_id.is_not(
+                    None
+                ),
+            )
+        )
+        .all()
+    )
+
+    # Always include the current account, even if
+    # its Person link is temporarily incomplete.
+    registered_user_ids.add(
+        user.id
+    )
+
+    return registered_user_ids
+
+
 def _visible_posts_query(
     user,
 ):
@@ -369,6 +493,12 @@ def _visible_posts_query(
         == user.id
     )
 
+    family_user_ids = (
+        _family_user_ids(
+            user
+        )
+    )
+
     return (
         CommunityPost.query
         .options(
@@ -389,6 +519,17 @@ def _visible_posts_query(
         .filter(
             ~CommunityPost.id
             .in_(reported_by_me)
+        )
+        .filter(
+            db.or_(
+                CommunityPost.post_type
+                != "family_news",
+
+                CommunityPost.author_user_id
+                .in_(
+                    family_user_ids
+                ),
+            )
         )
     )
 

@@ -1,4 +1,6 @@
-from datetime import datetime
+import os
+import re
+from datetime import datetime, timezone
 from uuid import UUID
 
 from flask import (
@@ -19,6 +21,10 @@ from app.models import (
     CommunityPost,
     User,
 )
+from app.models.community_post import (
+    CommunityPostReport,
+    UserBlock,
+)
 
 
 community_bp = Blueprint(
@@ -30,6 +36,47 @@ community_bp = Blueprint(
 ALLOWED_POST_TYPES = {
     "event",
     "family_news",
+}
+
+
+ALLOWED_REPORT_REASONS = {
+    "spam",
+    "harassment",
+    "hate_or_abuse",
+    "sexual_content",
+    "violence",
+    "misinformation",
+    "other",
+}
+
+
+ALLOWED_REPORT_STATUSES = {
+    "pending",
+    "reviewed",
+    "dismissed",
+    "actioned",
+}
+
+
+# This is intentionally a small, conservative baseline.
+# Extra words/phrases can be added in Railway with:
+#
+# COMMUNITY_BLOCKED_TERMS=term one,term two,...
+#
+# The user-facing report/block tools remain the main moderation path.
+DEFAULT_BLOCKED_TERMS = {
+    "fuck",
+    "fucking",
+    "cunt",
+    "faggot",
+    "nigger",
+    "porn",
+    "pornography",
+    "kill yourself",
+    "kontol",
+    "memek",
+    "ngentot",
+    "jembut",
 }
 
 
@@ -114,6 +161,19 @@ def author_name(post):
     return "Unknown"
 
 
+def _user_display_name(user):
+    if (
+        user is not None
+        and user.person is not None
+    ):
+        return user.person.full_name
+
+    if user is not None:
+        return "Caruban user"
+
+    return "Unknown"
+
+
 def serialize_post(
     post,
     current_user_id=None,
@@ -163,6 +223,44 @@ def serialize_post(
     }
 
 
+def serialize_report(report):
+    post = report.post
+
+    return {
+        "id": str(report.id),
+        "post_id": str(report.post_id),
+        "reporter_user_id": str(
+            report.reporter_user_id
+        ),
+        "reason": report.reason,
+        "details": report.details,
+        "status": report.status,
+        "created_at": (
+            report.created_at.isoformat()
+            if report.created_at
+            else None
+        ),
+        "resolved_at": (
+            report.resolved_at.isoformat()
+            if report.resolved_at
+            else None
+        ),
+        "post": (
+            {
+                "title": post.title,
+                "author_user_id": str(
+                    post.author_user_id
+                ),
+                "author_name": (
+                    author_name(post)
+                ),
+            }
+            if post is not None
+            else None
+        ),
+    }
+
+
 def parse_iso_datetime(value):
     if value is None:
         return None
@@ -182,6 +280,117 @@ def parse_iso_datetime(value):
 
     except ValueError:
         return None
+
+
+def _blocked_terms():
+    terms = set(
+        DEFAULT_BLOCKED_TERMS
+    )
+
+    extra = os.getenv(
+        "COMMUNITY_BLOCKED_TERMS",
+        "",
+    )
+
+    for item in extra.split(","):
+        item = item.strip()
+
+        if item:
+            terms.add(item)
+
+    return terms
+
+
+def _contains_blocked_content(
+    *values,
+):
+    text = " ".join(
+        str(value or "")
+        for value in values
+    )
+
+    text = " ".join(
+        text.casefold().split()
+    )
+
+    if not text:
+        return False
+
+    for term in _blocked_terms():
+        normalized_term = (
+            " ".join(
+                term.casefold().split()
+            )
+        )
+
+        if not normalized_term:
+            continue
+
+        pattern = (
+            r"(?<!\w)"
+            + re.escape(
+                normalized_term
+            )
+            + r"(?!\w)"
+        )
+
+        if re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        ):
+            return True
+
+    return False
+
+
+def _visible_posts_query(
+    user,
+):
+    blocked_by_me = db.select(
+        UserBlock.blocked_user_id
+    ).where(
+        UserBlock.blocker_user_id
+        == user.id
+    )
+
+    blocked_me = db.select(
+        UserBlock.blocker_user_id
+    ).where(
+        UserBlock.blocked_user_id
+        == user.id
+    )
+
+    reported_by_me = db.select(
+        CommunityPostReport.post_id
+    ).where(
+        CommunityPostReport
+        .reporter_user_id
+        == user.id
+    )
+
+    return (
+        CommunityPost.query
+        .options(
+            joinedload(
+                CommunityPost.author
+            ).joinedload(
+                User.person
+            )
+        )
+        .filter(
+            ~CommunityPost.author_user_id
+            .in_(blocked_by_me)
+        )
+        .filter(
+            ~CommunityPost.author_user_id
+            .in_(blocked_me)
+        )
+        .filter(
+            ~CommunityPost.id
+            .in_(reported_by_me)
+        )
+    )
 
 
 @community_bp.get("/posts")
@@ -210,15 +419,8 @@ def get_posts():
         _pagination_args()
     )
 
-    query = (
-        CommunityPost.query
-        .options(
-            joinedload(
-                CommunityPost.author
-            ).joinedload(
-                User.person
-            )
-        )
+    query = _visible_posts_query(
+        user
     )
 
     if post_type:
@@ -350,6 +552,37 @@ def create_post():
             }
         ), 400
 
+    if len(body) > 10000:
+        return jsonify(
+            {
+                "message":
+                    "Post body is too long."
+            }
+        ), 400
+
+    if len(location) > 255:
+        return jsonify(
+            {
+                "message":
+                    "Location is too long."
+            }
+        ), 400
+
+    if _contains_blocked_content(
+        title,
+        body,
+        location,
+    ):
+        return jsonify(
+            {
+                "message": (
+                    "This post contains content "
+                    "that is not allowed in the "
+                    "Caruban community."
+                )
+            }
+        ), 400
+
     event_at = None
 
     if post_type == "event":
@@ -397,6 +630,452 @@ def create_post():
     ), 201
 
 
+@community_bp.post(
+    "/posts/<uuid:post_id>/report"
+)
+@jwt_required()
+def report_post(post_id):
+    user = get_current_user()
+
+    if user is None:
+        return jsonify(
+            {
+                "message":
+                    "User not found."
+            }
+        ), 404
+
+    post = db.session.get(
+        CommunityPost,
+        post_id,
+    )
+
+    if post is None:
+        return jsonify(
+            {
+                "message":
+                    "Post not found."
+            }
+        ), 404
+
+    if (
+        post.author_user_id
+        == user.id
+    ):
+        return jsonify(
+            {
+                "message":
+                    "You cannot report "
+                    "your own post."
+            }
+        ), 400
+
+    data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
+
+    reason = str(
+        data.get(
+            "reason",
+            "",
+        )
+    ).strip()
+
+    details = str(
+        data.get(
+            "details",
+            "",
+        )
+        or ""
+    ).strip()
+
+    if (
+        reason
+        not in ALLOWED_REPORT_REASONS
+    ):
+        return jsonify(
+            {
+                "message":
+                    "Invalid report reason."
+            }
+        ), 400
+
+    if len(details) > 1000:
+        return jsonify(
+            {
+                "message":
+                    "Report details are too long."
+            }
+        ), 400
+
+    existing = (
+        CommunityPostReport.query
+        .filter(
+            CommunityPostReport.post_id
+            == post.id,
+            CommunityPostReport
+            .reporter_user_id
+            == user.id,
+        )
+        .first()
+    )
+
+    if existing is not None:
+        existing.reason = reason
+        existing.details = (
+            details or None
+        )
+        existing.status = "pending"
+        existing.resolved_at = None
+
+        db.session.commit()
+
+        return jsonify(
+            {
+                "message": (
+                    "Report updated. "
+                    "The post is hidden "
+                    "from your feed."
+                ),
+                "report_id": str(
+                    existing.id
+                ),
+            }
+        ), 200
+
+    report = CommunityPostReport(
+        post_id=post.id,
+        reporter_user_id=user.id,
+        reason=reason,
+        details=details or None,
+    )
+
+    db.session.add(
+        report
+    )
+
+    db.session.commit()
+
+    return jsonify(
+        {
+            "message": (
+                "Report submitted. "
+                "The post is hidden "
+                "from your feed."
+            ),
+            "report_id": str(
+                report.id
+            ),
+        }
+    ), 201
+
+
+@community_bp.post(
+    "/users/<uuid:user_id>/block"
+)
+@jwt_required()
+def block_user(user_id):
+    user = get_current_user()
+
+    if user is None:
+        return jsonify(
+            {
+                "message":
+                    "User not found."
+            }
+        ), 404
+
+    if user_id == user.id:
+        return jsonify(
+            {
+                "message":
+                    "You cannot block yourself."
+            }
+        ), 400
+
+    target = db.session.get(
+        User,
+        user_id,
+    )
+
+    if target is None:
+        return jsonify(
+            {
+                "message":
+                    "User not found."
+            }
+        ), 404
+
+    existing = (
+        UserBlock.query
+        .filter(
+            UserBlock.blocker_user_id
+            == user.id,
+            UserBlock.blocked_user_id
+            == target.id,
+        )
+        .first()
+    )
+
+    if existing is not None:
+        return jsonify(
+            {
+                "message":
+                    "User is already blocked."
+            }
+        ), 200
+
+    block = UserBlock(
+        blocker_user_id=user.id,
+        blocked_user_id=target.id,
+    )
+
+    db.session.add(
+        block
+    )
+
+    db.session.commit()
+
+    return jsonify(
+        {
+            "message":
+                "User blocked.",
+            "blocked_user": {
+                "id": str(target.id),
+                "name": (
+                    _user_display_name(
+                        target
+                    )
+                ),
+            },
+        }
+    ), 201
+
+
+@community_bp.delete(
+    "/users/<uuid:user_id>/block"
+)
+@jwt_required()
+def unblock_user(user_id):
+    user = get_current_user()
+
+    if user is None:
+        return jsonify(
+            {
+                "message":
+                    "User not found."
+            }
+        ), 404
+
+    block = (
+        UserBlock.query
+        .filter(
+            UserBlock.blocker_user_id
+            == user.id,
+            UserBlock.blocked_user_id
+            == user_id,
+        )
+        .first()
+    )
+
+    if block is not None:
+        db.session.delete(
+            block
+        )
+
+        db.session.commit()
+
+    return jsonify(
+        {
+            "message":
+                "User unblocked."
+        }
+    ), 200
+
+
+@community_bp.get(
+    "/reports"
+)
+@jwt_required()
+def get_reports():
+    user = get_current_user()
+
+    if user is None:
+        return jsonify(
+            {
+                "message":
+                    "User not found."
+            }
+        ), 404
+
+    if not user.is_admin:
+        return jsonify(
+            {
+                "message":
+                    "Admin access required."
+            }
+        ), 403
+
+    status = str(
+        request.args.get(
+            "status",
+            "pending",
+        )
+    ).strip()
+
+    if (
+        status
+        not in ALLOWED_REPORT_STATUSES
+    ):
+        return jsonify(
+            {
+                "message":
+                    "Invalid report status."
+            }
+        ), 400
+
+    page, per_page = (
+        _pagination_args()
+    )
+
+    query = (
+        CommunityPostReport.query
+        .options(
+            joinedload(
+                CommunityPostReport.post
+            ).joinedload(
+                CommunityPost.author
+            ).joinedload(
+                User.person
+            )
+        )
+        .filter(
+            CommunityPostReport.status
+            == status
+        )
+    )
+
+    total = query.count()
+
+    reports = (
+        query
+        .order_by(
+            CommunityPostReport
+            .created_at
+            .desc()
+        )
+        .offset(
+            (page - 1) * per_page
+        )
+        .limit(per_page)
+        .all()
+    )
+
+    return jsonify(
+        {
+            "reports": [
+                serialize_report(
+                    report
+                )
+                for report in reports
+            ],
+            "pagination": (
+                _pagination_payload(
+                    page,
+                    per_page,
+                    total,
+                )
+            ),
+        }
+    ), 200
+
+
+@community_bp.patch(
+    "/reports/<uuid:report_id>"
+)
+@jwt_required()
+def update_report(report_id):
+    user = get_current_user()
+
+    if user is None:
+        return jsonify(
+            {
+                "message":
+                    "User not found."
+            }
+        ), 404
+
+    if not user.is_admin:
+        return jsonify(
+            {
+                "message":
+                    "Admin access required."
+            }
+        ), 403
+
+    report = db.session.get(
+        CommunityPostReport,
+        report_id,
+    )
+
+    if report is None:
+        return jsonify(
+            {
+                "message":
+                    "Report not found."
+            }
+        ), 404
+
+    data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
+
+    status = str(
+        data.get(
+            "status",
+            "",
+        )
+    ).strip()
+
+    if status not in {
+        "reviewed",
+        "dismissed",
+        "actioned",
+    }:
+        return jsonify(
+            {
+                "message":
+                    "Invalid report status."
+            }
+        ), 400
+
+    report.status = status
+    report.resolved_at = (
+        datetime.now(
+            timezone.utc
+        )
+    )
+
+    db.session.commit()
+
+    return jsonify(
+        {
+            "message":
+                "Report updated.",
+            "report":
+                serialize_report(
+                    report
+                ),
+        }
+    ), 200
+
+
 @community_bp.delete(
     "/posts/<uuid:post_id>"
 )
@@ -428,6 +1107,7 @@ def delete_post(post_id):
     if (
         post.author_user_id
         != user.id
+        and not user.is_admin
     ):
         return jsonify(
             {

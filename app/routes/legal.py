@@ -815,10 +815,7 @@ def account_deletion():
     else:
         contact_html = (
             "<p>"
-            "Email dukungan belum dikonfigurasi. "
-            "Silakan gunakan halaman "
-            '<a href="/legal/support">Dukungan Caruban Nagari</a> '
-            "untuk menghubungi tim pengelola."
+            "gekrafs.noreply@gmail.com"
             "</p>"
         )
 

@@ -554,6 +554,156 @@ SUPPORT_HTML = """
             <a href="/legal/privacy">Kebijakan Privasi</a>
             &nbsp;•&nbsp;
             <a href="/legal/terms">Syarat dan Ketentuan</a>
+            &nbsp;•&nbsp;
+            <a href="/legal/account-deletion">Penghapusan Akun</a>
+        </p>
+    </section>
+</body>
+</html>
+"""
+
+
+ACCOUNT_DELETION_HTML = """
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+    <title>Penghapusan Akun - Caruban Nagari</title>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont,
+                "Segoe UI", sans-serif;
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 32px 20px 64px;
+            line-height: 1.7;
+            color: #202124;
+        }
+
+        h1, h2 {
+            color: #111827;
+        }
+
+        h1 {
+            margin-bottom: 4px;
+        }
+
+        .subtitle {
+            color: #6b7280;
+            margin-bottom: 32px;
+        }
+
+        section {
+            margin-top: 30px;
+        }
+
+        .contact {
+            border: 1px solid #d1d5db;
+            border-radius: 14px;
+            padding: 18px;
+            background: #f9fafb;
+        }
+
+        .notice {
+            border-left: 4px solid #087fa8;
+            padding: 12px 16px;
+            background: #f0f9ff;
+        }
+
+        a {
+            color: #087fa8;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Penghapusan Akun Caruban Nagari</h1>
+
+    <div class="subtitle">
+        Permintaan penghapusan akun dan data terkait.
+    </div>
+
+    <p>
+        Pengguna Caruban Nagari dapat meminta penghapusan akun
+        beserta data yang terkait dengan akun tersebut.
+    </p>
+
+    <section>
+        <h2>Hapus langsung dari aplikasi</h2>
+
+        <p>
+            Jika Anda masih dapat masuk ke aplikasi, buka
+            <strong>Profile</strong> lalu pilih
+            <strong>Delete Account</strong>. Setelah dikonfirmasi,
+            akun akan dihapus dan Anda akan keluar dari aplikasi.
+        </p>
+    </section>
+
+    <section>
+        <h2>Ajukan permintaan tanpa aplikasi</h2>
+
+        <p>
+            Jika Anda sudah menghapus aplikasi atau tidak dapat
+            mengakses akun, Anda tetap dapat meminta penghapusan
+            melalui email dukungan di bawah ini.
+        </p>
+
+        <div class="contact">
+            {{DELETION_CONTACT}}
+        </div>
+
+        <p>
+            Kirim permintaan dari alamat email yang terdaftar pada
+            akun Caruban Nagari, atau cantumkan alamat email akun
+            yang ingin dihapus agar kepemilikan akun dapat
+            diverifikasi.
+        </p>
+
+        <p>
+            Jangan pernah mengirimkan kata sandi melalui email.
+        </p>
+    </section>
+
+    <section>
+        <h2>Data yang dihapus</h2>
+
+        <p>
+            Setelah permintaan penghapusan berhasil diproses,
+            kredensial login dan data pribadi yang terkait langsung
+            dengan akun akan dihapus atau dilepaskan dari profil
+            keluarga. Data lain yang bergantung pada akun, seperti
+            data usaha atau produk yang terkait dengan akun, juga
+            dapat dihapus sesuai struktur layanan.
+        </p>
+    </section>
+
+    <section>
+        <h2>Data silsilah yang dapat dipertahankan</h2>
+
+        <div class="notice">
+            Entri orang dalam silsilah keluarga dapat tetap
+            dipertahankan tanpa hubungan ke akun pengguna apabila
+            diperlukan untuk menjaga hubungan keluarga pengguna
+            lain tetap utuh. Informasi akun pribadi yang tidak
+            diperlukan akan dihapus atau dilepaskan dari entri
+            tersebut.
+        </div>
+    </section>
+
+    <section>
+        <h2>Dokumen terkait</h2>
+
+        <p>
+            <a href="/legal/privacy">Kebijakan Privasi</a>
+            &nbsp;•&nbsp;
+            <a href="/legal/terms">Syarat dan Ketentuan</a>
+            &nbsp;•&nbsp;
+            <a href="/legal/support">Dukungan</a>
         </p>
     </section>
 </body>
@@ -615,14 +765,65 @@ def support():
     else:
         contact_html = (
             "<p>"
-            "Silahkan hubungi kanal kontak resmi "
+            "Silakan hubungi kanal kontak resmi "
             "Caruban Nagari / GEKRAFS Cirebon."
-            "gekrafs.noreply@gmail.com"
             "</p>"
         )
 
     html = SUPPORT_HTML.replace(
         "{{SUPPORT_CONTACT}}",
+        str(contact_html),
+    )
+
+    return Response(
+        html,
+        status=200,
+        mimetype="text/html",
+    )
+
+
+@legal_bp.route(
+    "/account-deletion",
+    methods=["GET"],
+)
+def account_deletion():
+    support_email = os.getenv(
+        "SUPPORT_EMAIL",
+        "",
+    ).strip()
+
+    if support_email:
+        safe_email = escape(
+            support_email
+        )
+
+        contact_html = (
+            "<p>"
+            "Email: "
+            f'<a href="mailto:{safe_email}'
+            "?subject=Permintaan%20Penghapusan%20Akun%20"
+            'Caruban%20Nagari">'
+            f"{safe_email}"
+            "</a>"
+            "</p>"
+            "<p>"
+            "Subjek yang disarankan: "
+            "<strong>Permintaan Penghapusan Akun "
+            "Caruban Nagari</strong>"
+            "</p>"
+        )
+    else:
+        contact_html = (
+            "<p>"
+            "Email dukungan belum dikonfigurasi. "
+            "Silakan gunakan halaman "
+            '<a href="/legal/support">Dukungan Caruban Nagari</a> '
+            "untuk menghubungi tim pengelola."
+            "</p>"
+        )
+
+    html = ACCOUNT_DELETION_HTML.replace(
+        "{{DELETION_CONTACT}}",
         str(contact_html),
     )
 

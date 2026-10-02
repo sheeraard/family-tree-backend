@@ -200,6 +200,35 @@ def register():
     )
 
     if existing_user:
+        if not existing_user.is_email_verified:
+            if not existing_user.is_active:
+                return jsonify({
+                    "message": "Account is inactive"
+                }), 403
+
+            # Resume verification before checking phone/claim-code
+            # uniqueness: these may already belong to this account.
+            # Retrying signup must not overwrite its credentials/profile.
+            try:
+                issue_email_verification_code(existing_user)
+
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception(
+                    "Registration resumed, but verification email "
+                    "could not be sent"
+                )
+
+            # Keep the signup response status accepted by existing apps.
+            # The OTP screen also allows resending if delivery failed.
+            return jsonify({
+                "message": (
+                    "Please verify your email to complete registration."
+                ),
+                "verification_required": True,
+                "email": existing_user.email,
+            }), 201
+
         return jsonify({
             "message": (
                 "Email already registered"

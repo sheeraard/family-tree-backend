@@ -1,4 +1,6 @@
 import os
+import re
+from urllib.parse import urlsplit
 
 from flask import (
     Blueprint,
@@ -58,7 +60,7 @@ PRIVACY_POLICY_HTML = """
     <h1>Kebijakan Privasi GEKRAFS</h1>
 
     <div class="updated">
-        Terakhir diperbarui: 12 September 2026
+        Terakhir diperbarui: 15 Oktober 2026
     </div>
 
     <p>
@@ -137,7 +139,19 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>4. Penyimpanan dan Keamanan Data</h2>
+        <h2>4. Informasi Anggota Keluarga</h2>
+        <p>
+            Fitur silsilah dapat memuat informasi seseorang yang bukan
+            pengguna aplikasi. Pastikan Anda memiliki dasar yang sah
+            untuk menambahkan dan membagikan data kerabat; hindari
+            informasi sensitif yang tidak diperlukan, termasuk NIK,
+            catatan kesehatan, atau informasi keuangan pribadi.
+            Untuk melaporkan data keluarga yang tidak tepat atau
+            meminta peninjauan, kunjungi <a href="/legal/support">Dukungan</a>.
+        </p>
+    </section>
+    <section>
+        <h2>5. Penyimpanan dan Keamanan Data</h2>
 
         <p>
             Kami menggunakan langkah teknis yang wajar untuk
@@ -153,7 +167,7 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>5. Pembagian Informasi</h2>
+        <h2>6. Pembagian Informasi</h2>
 
         <p>
             GEKRAFS tidak menjual data pribadi pengguna.
@@ -172,7 +186,16 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>6. Konten Publik</h2>
+        <h2>7. Penggunaan tanpa Akun</h2>
+        <p>
+            Pengguna dapat menjelajahi budaya, silsilah sejarah yang
+            dipublikasikan, serta produk UMKM tanpa mendaftar.
+            Pembuatan akun diperlukan hanya untuk fitur personal
+            seperti mengelola silsilah dan usaha sendiri.
+        </p>
+    </section>
+    <section>
+        <h2>8. Konten Publik</h2>
 
         <p>
             Informasi yang secara sengaja dipublikasikan melalui
@@ -183,7 +206,7 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>7. Penghapusan Akun</h2>
+        <h2>9. Penghapusan Akun</h2>
 
         <p>
             Pengguna dapat meminta penghapusan akun melalui
@@ -204,7 +227,7 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>8. Perubahan Kebijakan</h2>
+        <h2>10. Perubahan Kebijakan</h2>
 
         <p>
             Kebijakan Privasi dapat diperbarui untuk
@@ -219,12 +242,12 @@ PRIVACY_POLICY_HTML = """
     </section>
 
     <section>
-        <h2>9. Kontak</h2>
+        <h2>11. Kontak</h2>
 
         <p>
-            Pertanyaan mengenai privasi atau penggunaan data
-            dapat disampaikan melalui kanal kontak resmi
-            GEKRAFS.
+            Untuk pertanyaan atau permintaan terkait data pribadi,
+            kunjungi <a href="/legal/support">halaman dukungan</a>.
+            Anda juga dapat menghapus akun melalui menu Profil di aplikasi.
         </p>
     </section>
 </body>
@@ -279,12 +302,12 @@ TERMS_HTML = """
     <h1>Syarat dan Ketentuan GEKRAFS</h1>
 
     <div class="updated">
-        Terakhir diperbarui: 12 September 2026
+        Terakhir diperbarui: 15 Oktober 2026
     </div>
 
     <p>
-        Dengan membuat akun atau menggunakan aplikasi GEKRAFS,
-        pengguna menyetujui Syarat dan Ketentuan berikut.
+        Dengan menggunakan aplikasi Caruban Nagari / GEKRAFS,
+        termasuk sebagai tamu, pengguna tunduk pada Syarat dan Ketentuan berikut.
     </p>
 
     <section>
@@ -365,7 +388,25 @@ TERMS_HTML = """
     </section>
 
     <section>
-        <h2>6. Konten Pengguna</h2>
+        <h2>6. Informasi Produk dan Transaksi</h2>
+        <p>
+            Etalase menyediakan informasi produk dan kontak penjual.
+            Pada versi ini, aplikasi tidak memproses pembayaran,
+            menyimpan data kartu pembayaran, atau menyediakan
+            dompet koin. Jika pembeli menghubungi penjual melalui
+            layanan di luar aplikasi, pemesanan, pembayaran, pengiriman,
+            pembatalan, dan pengembalian dana disepakati langsung
+            dengan penjual terkait sesuai hukum yang berlaku.
+        </p>
+        <p>
+            Periksa identitas penjual, harga, ketersediaan, dan ketentuan
+            transaksi sebelum melakukan pembayaran di luar aplikasi.
+            Pengelola dapat menerima laporan melalui
+            <a href="/legal/support">halaman dukungan</a>.
+        </p>
+    </section>
+    <section>
+        <h2>7. Konten Pengguna</h2>
 
         <p>
             Pengguna tetap bertanggung jawab terhadap konten
@@ -380,7 +421,7 @@ TERMS_HTML = """
     </section>
 
     <section>
-        <h2>7. Moderasi</h2>
+        <h2>8. Moderasi</h2>
 
         <p>
             Administrator dapat melakukan moderasi terhadap
@@ -391,7 +432,7 @@ TERMS_HTML = """
     </section>
 
     <section>
-        <h2>8. Penghapusan Akun</h2>
+        <h2>9. Penghapusan Akun</h2>
 
         <p>
             Pengguna dapat menghapus akun melalui fitur yang
@@ -407,7 +448,7 @@ TERMS_HTML = """
     </section>
 
     <section>
-        <h2>9. Ketersediaan Layanan</h2>
+        <h2>10. Ketersediaan Layanan</h2>
 
         <p>
             Kami berupaya menjaga layanan tetap tersedia,
@@ -417,7 +458,7 @@ TERMS_HTML = """
     </section>
 
     <section>
-        <h2>10. Perubahan Layanan</h2>
+        <h2>11. Perubahan Layanan</h2>
 
         <p>
             Fitur, kebijakan, atau Syarat dan Ketentuan dapat
@@ -426,11 +467,11 @@ TERMS_HTML = """
     </section>
 
     <section>
-        <h2>11. Kontak</h2>
+        <h2>12. Kontak</h2>
 
         <p>
             Pertanyaan mengenai penggunaan aplikasi dapat
-            disampaikan melalui kanal kontak resmi GEKRAFS.
+            disampaikan melalui <a href="/legal/support">halaman dukungan</a>.
         </p>
     </section>
 </body>
@@ -735,51 +776,64 @@ def terms():
     )
 
 
+def _support_contact_html():
+    """Require a real operator-configured support destination.
+
+    Never invent a contact address or use a no-reply sender.
+    """
+    support_email = os.getenv("SUPPORT_EMAIL", "").strip()
+    support_url = os.getenv("SUPPORT_CONTACT_URL", "").strip()
+
+    contact_parts = []
+    if support_email and re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", support_email):
+        safe_email = escape(support_email)
+        contact_parts.append(
+            '<p><strong>Email dukungan:</strong> '
+            f'<a href="mailto:{safe_email}">{safe_email}</a></p>'
+        )
+
+    if support_url:
+        try:
+            url = urlsplit(support_url)
+        except ValueError:
+            url = None
+        if (url is not None and url.scheme == "https" and url.netloc
+                and not url.username and not url.password):
+            contact_parts.append(
+                '<p><strong>Formulir bantuan:</strong> '
+                f'<a href="{escape(support_url)}">Hubungi Tim Dukungan</a></p>'
+            )
+
+    if not contact_parts:
+        return None
+
+    contact_parts.append(
+        '<p>Untuk mendapatkan bantuan atau melaporkan masalah, sertakan '
+        'nama fitur, jenis perangkat, versi aplikasi, dan uraian kendala. '
+        'Jangan kirim kata sandi, OTP, atau data silsilah pihak lain.</p>'
+    )
+    return "\n".join(contact_parts)
+
+
 @legal_bp.route(
     "/support",
     methods=["GET"],
 )
 def support():
-    support_email = os.getenv(
-        "SUPPORT_EMAIL",
-        "",
-    ).strip()
-
-    if support_email:
-        safe_email = escape(
-            support_email
+    contact_html = _support_contact_html()
+    if contact_html is None:
+        # Deliberately fail verification instead of falsely advertising
+        # a non-functional support site. Set a real SUPPORT_EMAIL or
+        # SUPPORT_CONTACT_URL in Railway before submitting to Apple.
+        return Response(
+            "Support contact is not configured. "
+            "Set SUPPORT_EMAIL or SUPPORT_CONTACT_URL.",
+            status=503,
+            mimetype="text/plain",
         )
 
-        contact_html = (
-            "<p>"
-            "Email: "
-            f'<a href="mailto:{safe_email}">'
-            f"{safe_email}"
-            "</a>"
-            "</p>"
-            "<p>"
-            "Sertakan jenis perangkat, versi aplikasi, "
-            "dan penjelasan singkat mengenai kendala."
-            "</p>"
-        )
-    else:
-        contact_html = (
-            "<p>"
-            "Silakan hubungi kanal kontak resmi "
-            "Caruban Nagari / GEKRAFS Cirebon."
-            "</p>"
-        )
-
-    html = SUPPORT_HTML.replace(
-        "{{SUPPORT_CONTACT}}",
-        str(contact_html),
-    )
-
-    return Response(
-        html,
-        status=200,
-        mimetype="text/html",
-    )
+    html = SUPPORT_HTML.replace("{{SUPPORT_CONTACT}}", contact_html)
+    return Response(html, status=200, mimetype="text/html")
 
 
 @legal_bp.route(
@@ -814,9 +868,9 @@ def account_deletion():
         )
     else:
         contact_html = (
-            "<p>"
-            "gekrafs.noreply@gmail.com"
-            "</p>"
+            "<p>Gunakan fitur Hapus Akun di menu Profil aplikasi. "
+            "Jika membutuhkan bantuan tambahan, kunjungi "
+            "<a href='/legal/support'>Dukungan</a>.</p>"
         )
 
     html = ACCOUNT_DELETION_HTML.replace(

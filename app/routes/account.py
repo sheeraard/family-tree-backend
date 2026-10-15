@@ -87,6 +87,12 @@ def delete_account():
         #
         person.user_id = None
 
+        # Keep only the structural node needed by relatives;
+        # do not retain the deleted account owner's name,
+        # date of birth, gender, or profile picture.
+        person.full_name = "Profil dihapus"
+        person.birth_date = None
+        person.gender = None
         person.photo_url = None
 
         person.claim_code_hash = None

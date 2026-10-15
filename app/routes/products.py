@@ -213,12 +213,9 @@ def seller_name(
             .full_name
         )
 
-    if product.seller:
-        return (
-            product.seller.email
-        )
-
-    return "Unknown seller"
+    # A seller's login email is not automatically public contact info.
+    # The deliberately published product.contact field is used instead.
+    return "Penjual UMKM"
 
 
 def serialize_product(
@@ -410,14 +407,16 @@ def get_owned_product(
     "",
     methods=["GET"],
 )
-@jwt_required()
+@jwt_required(optional=True)
 def list_products():
+    # Public storefront. Optional authentication is used only to
+    # identify the owner's products, never to expose private data.
     user = get_current_user()
 
-    if not user:
-        return jsonify({
-            "message": "Invalid user"
-        }), 401
+    if get_jwt_identity() is not None and (
+        user is None or not user.is_active
+    ):
+        return jsonify({"message": "Invalid user"}), 401
 
     category = str(
         request.args.get(
@@ -525,7 +524,7 @@ def list_products():
             serialize_product(
                 product,
                 current_user_id=(
-                    user.id
+                    user.id if user is not None else None
                 ),
             )
             for product
@@ -636,7 +635,7 @@ def list_my_products():
             serialize_product(
                 product,
                 current_user_id=(
-                    user.id
+                    user.id if user is not None else None
                 ),
             )
             for product

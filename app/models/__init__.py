@@ -38,3 +38,4 @@ from app.models.umkm_application import (
 from app.models.email_verification_code import (
     EmailVerificationCode,
 )
+from app.models.admin_audit_log import AdminAuditLog

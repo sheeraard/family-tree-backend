@@ -86,6 +86,8 @@ class User(db.Model):
         server_default=func.now(),
     )
 
+    last_seen_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+
     updated_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,

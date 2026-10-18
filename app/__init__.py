@@ -330,6 +330,13 @@ def create_app():
         url_prefix="/legal",
     )
 
+    from app.routes.admin_web import admin_web_bp
+    app.register_blueprint(admin_web_bp, url_prefix="/admin")
+    from app.routes.admin_activity import activity_bp
+    app.register_blueprint(activity_bp)
+    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                      SESSION_COOKIE_SECURE=__import__("os").getenv("APP_ENV", "development").lower() == "production")
+
     #
     # Global guards
     #

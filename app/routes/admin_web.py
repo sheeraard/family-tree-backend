@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
-from app.models import User, Product, Person, CultureContent, UmkmApplication
+from app.models import User, Product, Person, Relationship, CultureContent, UmkmApplication
 
 admin_web_bp = Blueprint("admin_web", __name__, template_folder="../templates")
 
@@ -76,7 +76,7 @@ def secure_response(response):
 def admin_template_values():
     if not request.path.startswith("/admin"):
         return {}
-    return {"admin_user": current_admin(), "csrf_token": csrf_token}
+    return {"admin_user": current_admin(), "csrf_token": csrf_token, "genealogy_inspector_enabled": os.getenv("ADMIN_GENEALOGY_INSPECTOR_ENABLED", "false").lower() == "true"}
 
 
 @admin_web_bp.route("/login", methods=["GET", "POST"])
@@ -333,3 +333,105 @@ def support_sessions():
         abort(403)
     entries = db.session.scalars(select(SupportSession).order_by(SupportSession.created_at.desc()).limit(50)).all()
     return render_template('admin/dashboard.html', view='support', support_sessions=entries)
+
+
+# Temporary beta-only genealogy inspector. Defaults OFF in production.
+@admin_web_bp.get('/genealogy/<uuid:user_id>')
+@guarded
+def genealogy_inspector(user_id):
+    if os.getenv('ADMIN_GENEALOGY_INSPECTOR_ENABLED', 'false').lower() != 'true':
+        abort(404)
+    actor = current_admin()
+    if actor.role != User.ROLE_SUPER_ADMIN:
+        abort(403)
+    target = db.session.get(User, user_id)
+    if target is None:
+        abort(404)
+    root = db.session.scalar(select(Person).where(Person.user_id == user_id))
+    if root is None:
+        return render_template('admin/genealogy_inspector.html', target=target,
+                               root=None, people={}, links=[], focus=None, relations=[],
+                               inferred_siblings=[], truncated=False)
+
+    # Traverse one connected component in bounded batches. No unrelated family trees.
+    person_ids = {root.id}
+    frontier = {root.id}
+    edge_map = {}
+    truncated = False
+    for _ in range(12):
+        if not frontier:
+            break
+        edges = db.session.scalars(select(Relationship).where(
+            db.or_(Relationship.person_a_id.in_(frontier),
+                   Relationship.person_b_id.in_(frontier))
+        ).limit(2001)).all()
+        if len(edges) > 2000:
+            truncated = True
+        new_ids = set()
+        for edge in edges[:2000]:
+            edge_map[edge.id] = edge
+            new_ids.update((edge.person_a_id, edge.person_b_id))
+        if len(person_ids | new_ids) > 250:
+            truncated = True
+            break
+        frontier = new_ids - person_ids
+        person_ids.update(new_ids)
+    else:
+        truncated = True
+
+    people = {p.id: p for p in db.session.scalars(select(Person).where(Person.id.in_(person_ids))).all()}
+    try:
+        focus_id = UUID(request.args.get('person', '')) if request.args.get('person') else root.id
+    except (ValueError, TypeError):
+        abort(400)
+    if focus_id not in people:
+        abort(404)
+    focus = people[focus_id]
+    direct = {'parent': [], 'child': [], 'sibling': [], 'spouse': [], 'other': []}
+    parents = set()
+    siblings_direct = set()
+    for edge in edge_map.values():
+        if focus_id == edge.person_a_id:
+            other_id, kind = edge.person_b_id, edge.relation_a_to_b
+        elif focus_id == edge.person_b_id:
+            other_id, kind = edge.person_a_id, edge.relation_b_to_a
+        else:
+            continue
+        if other_id not in people:
+            continue
+        category = kind if kind in direct else 'other'
+        direct[category].append({'person': people[other_id], 'label': kind,
+                                 'status': edge.verification_status, 'id': str(edge.id)})
+        if kind == 'parent' and edge.verification_status == 'verified':
+            parents.add(other_id)
+        if kind == 'sibling':
+            siblings_direct.add(other_id)
+
+    # Inferred siblings only: sharing a verified parent, not an explicit sibling link.
+    sibling_ids = set()
+    for edge in edge_map.values():
+        if edge.verification_status != 'verified':
+            continue
+        if edge.relation_a_to_b == 'parent' and edge.person_b_id in parents:
+            sibling_ids.add(edge.person_a_id)
+        elif edge.relation_b_to_a == 'parent' and edge.person_a_id in parents:
+            sibling_ids.add(edge.person_b_id)
+    sibling_ids.difference_update({focus_id})
+    sibling_ids.difference_update(siblings_direct)
+    inferred_siblings = sorted((people[i] for i in sibling_ids if i in people), key=lambda x: x.full_name.lower())
+    for group in direct.values():
+        group.sort(key=lambda x: x['person'].full_name.lower())
+
+    # Log access to private genealogy, not just modifications.
+    log_admin_action(actor, 'genealogy_inspected', target.id)
+    db.session.commit()
+    links = []
+    for edge in edge_map.values():
+        if edge.person_a_id in people and edge.person_b_id in people:
+            links.append({'a': people[edge.person_a_id], 'b': people[edge.person_b_id],
+                          'a_to_b': edge.relation_a_to_b, 'b_to_a': edge.relation_b_to_a,
+                          'status': edge.verification_status})
+    links.sort(key=lambda e: (e['a'].full_name.lower(), e['b'].full_name.lower()))
+    return render_template('admin/genealogy_inspector.html', target=target, root=root,
+                           people=people, links=links, focus=focus, relations=direct,
+                           inferred_siblings=inferred_siblings, truncated=truncated)

@@ -1,4 +1,4 @@
-"""Explicitly consented, restricted diagnostic access for debug builds."""
+"""Restricted, logged support sessions for account diagnostics."""
 import hashlib
 import os
 import secrets
@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, create_access_token, verify_jwt_in_request
-from sqlalchemy import select, update
+from sqlalchemy import select
 from app.extensions import db, limiter
 from app.models import User, SupportSession
 from app.models.admin_audit_log import AdminAuditLog
@@ -17,17 +17,12 @@ def enabled():
     return os.environ.get('SUPPORT_LOGIN_ENABLED', '').lower() == 'true'
 
 def support_authorized(user):
-    """Owner opt-in, or an explicitly allowlisted developer-owned test account.
+    """Eligible account for administrator-assisted, audited diagnostics.
 
-    A deployment operator must configure exact email matches. This never grants
-    support access to admin accounts or inactive/unverified accounts.
+    Deployment operators must ensure their support terms authorize this access.
+    Never issue support sessions for administrative, inactive, or unverified users.
     """
-    if not user or not user.is_active or not user.is_email_verified or user.is_admin:
-        return False
-    emails = {address.strip().casefold() for address in
-              os.environ.get('SUPPORT_TEST_ACCOUNT_EMAILS', '').split(',')
-              if address.strip()}
-    return bool(user.support_access_enabled or user.email.casefold() in emails)
+    return bool(user and user.is_active and user.is_email_verified and not user.is_admin)
 
 def utcnow():
     return datetime.now(timezone.utc)
@@ -37,29 +32,6 @@ def audit(actor_id, action, target_id):
 
 def _hash(code):
     return hashlib.sha256(code.encode('utf-8')).hexdigest()
-
-@support_bp.post('/consent')
-@jwt_required()
-def consent():
-    if get_jwt().get('support_session'):
-        return jsonify(message='Support sessions cannot manage consent'), 403
-    user = db.session.get(User, UUID(str(get_jwt_identity())))
-    body = request.get_json(silent=True) or {}
-    if type(body.get('enabled')) is not bool:
-        return jsonify(message='enabled must be a boolean'), 400
-    user.support_access_enabled = body['enabled']
-    if not body['enabled']:
-        db.session.execute(update(SupportSession).where(SupportSession.target_user_id == user.id, SupportSession.revoked_at.is_(None)).values(revoked_at=utcnow()))
-    db.session.commit()
-    return jsonify(enabled=user.support_access_enabled)
-
-@support_bp.get('/consent')
-@jwt_required()
-def consent_status():
-    if get_jwt().get('support_session'):
-        return jsonify(enabled=False), 403
-    user = db.session.get(User, UUID(str(get_jwt_identity())))
-    return jsonify(enabled=user.support_access_enabled)
 
 @support_bp.post('/exchange')
 @limiter.limit('5 per minute; 15 per hour')

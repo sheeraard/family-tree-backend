@@ -282,3 +282,53 @@ def culture_visibility(content_id):
     db.session.commit()
     flash("Culture visibility updated.", "success")
     return redirect(url_for("admin_web.culture"))
+
+
+@admin_web_bp.post('/users/<uuid:user_id>/support-code')
+@guarded
+@limiter.limit('10 per hour')
+def support_code(user_id):
+    from datetime import timedelta
+    from app.routes.support_access import enabled, _hash, utcnow
+    from app.models.support_session import SupportSession
+    verify_csrf()
+    actor = current_admin()
+    target = db.session.get(User, user_id)
+    if not enabled() or actor.role != User.ROLE_SUPER_ADMIN:
+        abort(403, 'Support access is disabled or requires a super administrator')
+    if not target or not target.is_active or not target.is_email_verified or not target.support_access_enabled or target.is_admin:
+        abort(403, 'Account is ineligible or has not opted in')
+    code = secrets.token_hex(12).upper()
+    entry = SupportSession(admin_user_id=actor.id, target_user_id=target.id, code_hash=_hash(code), code_expires_at=utcnow() + timedelta(minutes=5))
+    db.session.add(entry)
+    log_admin_action(actor, 'support_code_created', target.id)
+    db.session.commit()
+    return render_template('admin/support_code.html', code=code, target=target)
+
+
+@admin_web_bp.post('/support/<uuid:session_id>/revoke')
+@guarded
+def revoke_support(session_id):
+    from app.models.support_session import SupportSession
+    from app.routes.support_access import utcnow
+    verify_csrf()
+    actor = current_admin()
+    if actor.role != User.ROLE_SUPER_ADMIN:
+        abort(403)
+    entry = db.session.get(SupportSession, session_id)
+    if not entry:
+        abort(404)
+    entry.revoked_at = utcnow()
+    log_admin_action(actor, 'support_session_revoked', entry.target_user_id)
+    db.session.commit()
+    return redirect(url_for('admin_web.support_sessions'))
+
+
+@admin_web_bp.get('/support')
+@guarded
+def support_sessions():
+    from app.models.support_session import SupportSession
+    if current_admin().role != User.ROLE_SUPER_ADMIN:
+        abort(403)
+    entries = db.session.scalars(select(SupportSession).order_by(SupportSession.created_at.desc()).limit(50)).all()
+    return render_template('admin/dashboard.html', view='support', support_sessions=entries)

@@ -86,6 +86,8 @@ class User(db.Model):
         server_default=func.now(),
     )
 
+    support_access_enabled = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+
     last_seen_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
 
     updated_at = db.Column(

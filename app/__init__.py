@@ -332,6 +332,8 @@ def create_app():
 
     from app.routes.admin_web import admin_web_bp
     app.register_blueprint(admin_web_bp, url_prefix="/admin")
+    from app.routes.support_access import support_bp
+    app.register_blueprint(support_bp, url_prefix="/api/support")
     from app.routes.admin_activity import activity_bp
     app.register_blueprint(activity_bp)
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",

@@ -16,6 +16,19 @@ support_bp = Blueprint('support', __name__)
 def enabled():
     return os.environ.get('SUPPORT_LOGIN_ENABLED', '').lower() == 'true'
 
+def support_authorized(user):
+    """Owner opt-in, or an explicitly allowlisted developer-owned test account.
+
+    A deployment operator must configure exact email matches. This never grants
+    support access to admin accounts or inactive/unverified accounts.
+    """
+    if not user or not user.is_active or not user.is_email_verified or user.is_admin:
+        return False
+    emails = {address.strip().casefold() for address in
+              os.environ.get('SUPPORT_TEST_ACCOUNT_EMAILS', '').split(',')
+              if address.strip()}
+    return bool(user.support_access_enabled or user.email.casefold() in emails)
+
 def utcnow():
     return datetime.now(timezone.utc)
 
@@ -64,7 +77,7 @@ def exchange():
         return jsonify(message='Invalid or expired code'), 400
     target = db.session.get(User, entry.target_user_id)
     actor = db.session.get(User, entry.admin_user_id)
-    if not target or not target.is_active or not target.is_email_verified or not target.support_access_enabled or not actor or not actor.is_active or actor.role != User.ROLE_SUPER_ADMIN:
+    if not target or not target.is_active or not target.is_email_verified or not support_authorized(target) or not actor or not actor.is_active or actor.role != User.ROLE_SUPER_ADMIN:
         db.session.rollback()
         return jsonify(message='Access not authorized'), 403
     entry.consumed_at = now
@@ -109,7 +122,7 @@ def protect_support_sessions():
         return jsonify(message='Support session expired or revoked'), 401
     target = db.session.get(User, entry.target_user_id)
     actor = db.session.get(User, entry.admin_user_id)
-    if not target or not target.support_access_enabled or not actor or actor.role != User.ROLE_SUPER_ADMIN or not actor.is_active:
+    if not target or not support_authorized(target) or not actor or actor.role != User.ROLE_SUPER_ADMIN or not actor.is_active:
         return jsonify(message='Support access revoked'), 403
     if request.method not in ('GET', 'HEAD', 'OPTIONS') and request.path != '/api/support/end':
         return jsonify(message='Support session is read-only'), 403

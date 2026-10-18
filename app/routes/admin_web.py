@@ -25,6 +25,11 @@ REDACTED_COLUMNS = {"password_hash", "phone", "email", "birth_date", "claim_code
                     "verification_code_hash", "code_hash", "reset_token_hash", "token_hash"}
 
 
+@admin_web_bp.app_context_processor
+def support_test_accounts_context():
+    return {'support_test_emails': {e.strip().casefold() for e in
+            os.environ.get('SUPPORT_TEST_ACCOUNT_EMAILS', '').split(',') if e.strip()}}
+
 def current_admin():
     raw = session.get("admin_user_id")
     if not raw:
@@ -289,15 +294,15 @@ def culture_visibility(content_id):
 @limiter.limit('10 per hour')
 def support_code(user_id):
     from datetime import timedelta
-    from app.routes.support_access import enabled, _hash, utcnow
+    from app.routes.support_access import enabled, _hash, utcnow, support_authorized
     from app.models.support_session import SupportSession
     verify_csrf()
     actor = current_admin()
     target = db.session.get(User, user_id)
     if not enabled() or actor.role != User.ROLE_SUPER_ADMIN:
         abort(403, 'Support access is disabled or requires a super administrator')
-    if not target or not target.is_active or not target.is_email_verified or not target.support_access_enabled or target.is_admin:
-        abort(403, 'Account is ineligible or has not opted in')
+    if not target or not target.is_active or not target.is_email_verified or not support_authorized(target):
+        abort(403, 'Account needs owner opt-in or must be a configured test account')
     code = secrets.token_hex(12).upper()
     entry = SupportSession(admin_user_id=actor.id, target_user_id=target.id, code_hash=_hash(code), code_expires_at=utcnow() + timedelta(minutes=5))
     db.session.add(entry)
